@@ -27,3 +27,8 @@ type MessageStore interface {
 type TokenGenerator interface {
 	Generate(ctx context.Context, content string) (<-chan string, error)
 }
+
+type SessionOwnerStore interface {
+	SetOwner(ctx context.Context, sessionID, userID string) error
+	GetOwner(ctx context.Context, sessionID string) (string, error)
+}

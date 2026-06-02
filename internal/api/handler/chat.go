@@ -2,44 +2,55 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"golang-learning/internal/api/middleware"
 	"golang-learning/internal/api/state"
 	"golang-learning/internal/application/port"
 	"golang-learning/internal/application/usecase"
-	"golang-learning/shared"
+	"golang-learning/internal/domain"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type ChatHandler struct {
 	sendMessage *usecase.SendMessageUseCase
 	getHistory  *usecase.GetHistoryUseCase
 	store       port.MessageStore
+	ownerStore  port.SessionOwnerStore
 	sseState    *state.SSEState
+	log         *zap.Logger
 }
 
 func NewChatHandler(
 	sendMessage *usecase.SendMessageUseCase,
 	getHistory *usecase.GetHistoryUseCase,
 	store port.MessageStore,
+	ownerStore port.SessionOwnerStore,
 	sseState *state.SSEState,
+	log *zap.Logger,
 ) *ChatHandler {
 	return &ChatHandler{
 		sendMessage: sendMessage,
 		getHistory:  getHistory,
 		store:       store,
+		ownerStore:  ownerStore,
 		sseState:    sseState,
+		log:         log,
 	}
 }
 
-func (h *ChatHandler) RegisterRoutes(r *gin.Engine) {
-	r.POST("/chat", h.PostChat)
-	r.GET("/chat/stream/:request_id", h.StreamResponse)
-	r.GET("/history/:session_id", h.GetHistory)
-	r.GET("/history/:session_id/db", h.GetHistoryDB)
+func (h *ChatHandler) RegisterRoutes(r *gin.Engine, authMiddleware gin.HandlerFunc) {
+	auth := r.Group("/", authMiddleware)
+	auth.POST("/chat", h.PostChat)
+	auth.GET("/chat/stream/:request_id", h.StreamResponse)
+	auth.GET("/history/:session_id", h.GetHistory)
+	auth.GET("/history/:session_id/db", h.GetHistoryDB)
 }
 
 type chatBody struct {
@@ -53,11 +64,26 @@ func (h *ChatHandler) PostChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	requestID, err := h.sendMessage.Execute(c.Request.Context(), body.SessionID, body.Content)
+
+	userID := c.GetString(middleware.UserIDKey)
+	ctx := c.Request.Context()
+
+	requestID, err := h.sendMessage.Execute(ctx, body.SessionID, body.Content)
 	if err != nil {
+		h.log.Error("send message failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	if err := h.ownerStore.SetOwner(ctx, body.SessionID, userID); err != nil {
+		h.log.Warn("set session owner failed", zap.Error(err), zap.String("session_id", body.SessionID))
+	}
+
+	h.log.Info("chat request published",
+		zap.String("request_id", requestID),
+		zap.String("session_id", body.SessionID),
+		zap.String("user_id", userID),
+	)
 	c.JSON(http.StatusOK, gin.H{"request_id": requestID})
 }
 
@@ -109,31 +135,53 @@ func (h *ChatHandler) StreamResponse(c *gin.Context) {
 
 func (h *ChatHandler) GetHistory(c *gin.Context) {
 	sessionID := c.Param("session_id")
+	if h.guardSession(c, sessionID) {
+		return
+	}
 	messages, err := h.getHistory.Execute(c.Request.Context(), sessionID)
 	if err != nil {
+		h.log.Error("get history failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	result := make([]shared.ChatResponse, 0, len(messages))
-	_ = result
-	out := make([]map[string]string, 0, len(messages))
-	for _, m := range messages {
-		out = append(out, map[string]string{
-			"role":       string(m.Role),
-			"content":    m.Content,
-			"request_id": m.RequestID,
-		})
-	}
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, toResponse(messages))
 }
 
 func (h *ChatHandler) GetHistoryDB(c *gin.Context) {
 	sessionID := c.Param("session_id")
+	if h.guardSession(c, sessionID) {
+		return
+	}
 	messages, err := h.store.GetHistory(c.Request.Context(), sessionID)
 	if err != nil {
+		h.log.Error("get history db failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	c.JSON(http.StatusOK, toResponse(messages))
+}
+
+// guardSession returns true (and writes response) if user does not own the session.
+func (h *ChatHandler) guardSession(c *gin.Context, sessionID string) bool {
+	userID := c.GetString(middleware.UserIDKey)
+	owner, err := h.ownerStore.GetOwner(c.Request.Context(), sessionID)
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return true
+		}
+		h.log.Error("get session owner failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return true
+	}
+	if owner != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return true
+	}
+	return false
+}
+
+func toResponse(messages []domain.Message) []map[string]string {
 	out := make([]map[string]string, 0, len(messages))
 	for _, m := range messages {
 		out = append(out, map[string]string{
@@ -142,5 +190,5 @@ func (h *ChatHandler) GetHistoryDB(c *gin.Context) {
 			"request_id": m.RequestID,
 		})
 	}
-	c.JSON(http.StatusOK, out)
+	return out
 }

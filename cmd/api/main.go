@@ -2,72 +2,118 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+	"net/http"
 
 	"golang-learning/config"
 	"golang-learning/internal/api"
 	"golang-learning/internal/api/handler"
+	"golang-learning/internal/api/middleware"
 	"golang-learning/internal/api/state"
+	"golang-learning/internal/application/port"
 	"golang-learning/internal/application/usecase"
 	kafkainfra "golang-learning/internal/infrastructure/kafka"
 	"golang-learning/internal/infrastructure/postgres"
 	"golang-learning/internal/infrastructure/redisstore"
+	"golang-learning/internal/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
+	kafka "github.com/segmentio/kafka-go"
+	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 func main() {
 	_ = godotenv.Load()
-	cfg := config.Load()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	fx.New(
+		fx.Provide(
+			config.Load,
+			logger.New,
+			newRedisClient,
+			newPostgresPool,
+			newSSEState,
+			kafkainfra.NewEventPublisher,
+			redisstore.NewConversationCache,
+			redisstore.NewSessionOwnerStore,
+			postgres.NewMessageStore,
+			asConversationCache,
+			asSessionOwnerStore,
+			asMessageStore,
+			asEventPublisher,
+			usecase.NewSendMessage,
+			usecase.NewGetHistory,
+			handler.NewChatHandler,
+		),
+		fx.Invoke(startResponseConsumer),
+		fx.Invoke(startServer),
+	).Run()
+}
 
-	// Redis
-	rdb := redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
-	defer rdb.Close()
+// interface adapters — fx needs explicit wiring for concrete → interface
+func asConversationCache(c *redisstore.ConversationCache) port.ConversationCache { return c }
+func asSessionOwnerStore(s *redisstore.SessionOwnerStore) port.SessionOwnerStore { return s }
+func asMessageStore(s *postgres.MessageStore) port.MessageStore                  { return s }
+func asEventPublisher(p *kafkainfra.EventPublisher) port.EventPublisher          { return p }
 
-	// PostgreSQL
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+func newRedisClient(cfg config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
+}
+
+func newPostgresPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		slog.Error("postgres connect failed", "err", err)
-		os.Exit(1)
+		return nil, err
 	}
-	defer pool.Close()
+	lc.Append(fx.Hook{
+		OnStop: func(_ context.Context) error { pool.Close(); return nil },
+	})
+	return pool, nil
+}
 
-	// Infrastructure
-	cache := redisstore.NewConversationCache(rdb, cfg.RedisTTL)
-	store := postgres.NewMessageStore(pool)
-	publisher := kafkainfra.NewEventPublisher(cfg.KafkaBrokers)
-	defer publisher.Close()
+func newSSEState() *state.SSEState { return &state.SSEState{} }
 
-	// Use cases
-	sendMessage := usecase.NewSendMessage(publisher)
-	getHistory := usecase.NewGetHistory(cache)
+func startResponseConsumer(lc fx.Lifecycle, cfg config.Config, s *state.SSEState, log *zap.Logger) {
+	r := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:  cfg.KafkaBrokers,
+		GroupID:  "api-sse-fan-out",
+		Topic:    "chat.responses",
+		MinBytes: 1,
+		MaxBytes: 10e6,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			go api.ConsumeResponses(ctx, r, s, log)
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			cancel()
+			return r.Close()
+		},
+	})
+}
 
-	// SSE state + background consumer
-	sseState := &state.SSEState{}
-	api.StartResponseConsumer(ctx, cfg.KafkaBrokers, sseState)
-
-	// HTTP server
+func startServer(lc fx.Lifecycle, h *handler.ChatHandler, cfg config.Config, log *zap.Logger) {
 	r := gin.Default()
-	chatHandler := handler.NewChatHandler(sendMessage, getHistory, store, sseState)
-	chatHandler.RegisterRoutes(r)
+	h.RegisterRoutes(r, middleware.JWT(cfg))
+	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 
-	slog.Info("API server starting", "port", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
-		slog.Error("server error", "err", err)
-	}
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			log.Info("API server starting", zap.String("port", cfg.Port))
+			go srv.ListenAndServe()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return srv.Shutdown(ctx)
+		},
+	})
 }
 
 func parseRedisAddr(url string) string {
-	// redis://localhost:6379 → localhost:6379
 	if len(url) > 8 && url[:8] == "redis://" {
 		return url[8:]
 	}

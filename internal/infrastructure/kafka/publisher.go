@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"golang-learning/config"
 	"golang-learning/shared"
 
 	kafka "github.com/segmentio/kafka-go"
@@ -19,10 +20,10 @@ type EventPublisher struct {
 	writer *kafka.Writer
 }
 
-func NewEventPublisher(brokers []string) *EventPublisher {
+func NewEventPublisher(cfg config.Config) *EventPublisher {
 	return &EventPublisher{
 		writer: &kafka.Writer{
-			Addr:     kafka.TCP(brokers...),
+			Addr:     kafka.TCP(cfg.KafkaBrokers...),
 			Balancer: &kafka.LeastBytes{},
 		},
 	}

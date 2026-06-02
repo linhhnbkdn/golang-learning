@@ -2,49 +2,73 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"golang-learning/config"
+	"golang-learning/internal/application/port"
 	"golang-learning/internal/application/usecase"
 	"golang-learning/internal/consumer"
 	"golang-learning/internal/infrastructure/postgres"
 	"golang-learning/internal/infrastructure/redisstore"
+	"golang-learning/internal/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 func main() {
 	_ = godotenv.Load()
-	cfg := config.Load()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	fx.New(
+		fx.Provide(
+			config.Load,
+			logger.New,
+			newRedisClient,
+			newPostgresPool,
+			redisstore.NewConversationCache,
+			postgres.NewMessageStore,
+			func(c *redisstore.ConversationCache) port.ConversationCache { return c },
+			func(s *postgres.MessageStore) port.MessageStore             { return s },
+			usecase.NewPersistSession,
+			consumer.NewPersistenceWorker,
+		),
+		fx.Invoke(runPersistence),
+	).Run()
+}
 
-	rdb := redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
-	defer rdb.Close()
+func newRedisClient(cfg config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
+}
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+func newPostgresPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		slog.Error("postgres connect failed", "err", err)
-		os.Exit(1)
+		return nil, err
 	}
-	defer pool.Close()
+	lc.Append(fx.Hook{
+		OnStop: func(_ context.Context) error { pool.Close(); return nil },
+	})
+	return pool, nil
+}
 
-	cache := redisstore.NewConversationCache(rdb, cfg.RedisTTL)
-	store := postgres.NewMessageStore(pool)
-
-	uc := usecase.NewPersistSession(cache, store)
-	w := consumer.NewPersistenceWorker(cfg.KafkaBrokers, uc)
-
-	if err := w.Run(ctx); err != nil {
-		slog.Error("persistence worker error", "err", err)
-		os.Exit(1)
-	}
+func runPersistence(lc fx.Lifecycle, w *consumer.PersistenceWorker, log *zap.Logger) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			go func() {
+				if err := w.Run(ctx); err != nil {
+					log.Error("persistence worker stopped", zap.Error(err))
+				}
+			}()
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			cancel()
+			return nil
+		},
+	})
 }
 
 func parseRedisAddr(url string) string {

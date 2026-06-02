@@ -2,49 +2,66 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"golang-learning/config"
+	"golang-learning/internal/application/port"
 	"golang-learning/internal/application/usecase"
 	"golang-learning/internal/consumer"
 	kafkainfra "golang-learning/internal/infrastructure/kafka"
 	"golang-learning/internal/infrastructure/llm"
 	"golang-learning/internal/infrastructure/redisstore"
+	"golang-learning/internal/logger"
 
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 func main() {
 	_ = godotenv.Load()
-	cfg := config.Load()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	fx.New(
+		fx.Provide(
+			config.Load,
+			logger.New,
+			newRedisClient,
+			newTokenGenerator,
+			kafkainfra.NewEventPublisher,
+			redisstore.NewConversationCache,
+			func(c *redisstore.ConversationCache) port.ConversationCache { return c },
+			func(p *kafkainfra.EventPublisher) port.EventPublisher       { return p },
+			usecase.NewProcessChatRequest,
+			consumer.NewWorker,
+		),
+		fx.Invoke(runWorker),
+	).Run()
+}
 
-	rdb := redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
-	defer rdb.Close()
+func newRedisClient(cfg config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
+}
 
-	generator, err := llm.NewTokenGenerator(cfg.LLMProvider)
-	if err != nil {
-		slog.Error("llm init failed", "err", err)
-		os.Exit(1)
-	}
+func newTokenGenerator(cfg config.Config) (port.TokenGenerator, error) {
+	return llm.NewTokenGenerator(cfg.LLMProvider)
+}
 
-	cache := redisstore.NewConversationCache(rdb, cfg.RedisTTL)
-	publisher := kafkainfra.NewEventPublisher(cfg.KafkaBrokers)
-	defer publisher.Close()
-
-	uc := usecase.NewProcessChatRequest(generator, publisher, cache)
-	w := consumer.NewWorker(cfg.KafkaBrokers, uc)
-
-	if err := w.Run(ctx); err != nil {
-		slog.Error("worker error", "err", err)
-		os.Exit(1)
-	}
+func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			go func() {
+				if err := w.Run(ctx); err != nil {
+					log.Error("worker stopped", zap.Error(err))
+				}
+			}()
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			cancel()
+			return nil
+		},
+	})
 }
 
 func parseRedisAddr(url string) string {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"golang-learning/config"
 	"golang-learning/internal/domain"
 
 	"github.com/redis/go-redis/v9"
@@ -16,10 +17,10 @@ type ConversationCache struct {
 	ttl    time.Duration
 }
 
-func NewConversationCache(client *redis.Client, ttlSeconds int) *ConversationCache {
+func NewConversationCache(client *redis.Client, cfg config.Config) *ConversationCache {
 	return &ConversationCache{
 		client: client,
-		ttl:    time.Duration(ttlSeconds) * time.Second,
+		ttl:    time.Duration(cfg.RedisTTL) * time.Second,
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"golang-learning/config"
 	"golang-learning/internal/application/usecase"
 	"golang-learning/shared"
 
@@ -16,11 +17,11 @@ type Worker struct {
 	reader  *kafka.Reader
 }
 
-func NewWorker(brokers []string, useCase *usecase.ProcessChatRequestUseCase) *Worker {
+func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *Worker {
 	return &Worker{
 		useCase: useCase,
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:  brokers,
+			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "llm-worker",
 			Topic:    "chat.requests",
 			MinBytes: 1,

@@ -1,8 +1,10 @@
 SESSION ?= demo-001
 MSG     ?= xin chào
+USER    ?= li
 PORT    ?= 8000
+TOKEN   ?= $(shell go run ./cmd/gentoken/ $(USER) 2>/dev/null)
 
-.PHONY: up down migrate api worker persistence chat history build
+.PHONY: up down migrate api worker persistence chat history build token
 
 up:
 	docker compose up -d
@@ -28,17 +30,27 @@ build:
 	go build -o bin/persistence ./cmd/persistence/
 	go build -o bin/migrate     ./cmd/migrate/
 
+token:
+	@go run ./cmd/gentoken/ $(USER)
+
 chat:
-	@curl -s -X POST http://localhost:$(PORT)/chat \
+	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
+	@RESP=$$(curl -s -X POST http://localhost:$(PORT)/chat \
 		-H "Content-Type: application/json" \
-		-d '{"session_id":"$(SESSION)","content":"$(MSG)"}' | tee /tmp/chat_resp.json
-	@echo ""
-	@REQUEST_ID=$$(cat /tmp/chat_resp.json | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4); \
-		echo "Streaming request_id: $$REQUEST_ID"; \
-		curl -s "http://localhost:$(PORT)/chat/stream/$$REQUEST_ID"
+		-H "Authorization: Bearer $(T)" \
+		-d '{"session_id":"$(SESSION)","content":"$(MSG)"}'); \
+	echo $$RESP; \
+	REQUEST_ID=$$(echo $$RESP | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4); \
+	echo "Streaming $$REQUEST_ID ..."; \
+	curl -s "http://localhost:$(PORT)/chat/stream/$$REQUEST_ID" \
+		-H "Authorization: Bearer $(T)"
 
 history:
-	@curl -s http://localhost:$(PORT)/history/$(SESSION) | python3 -m json.tool
+	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
+	@curl -s http://localhost:$(PORT)/history/$(SESSION) \
+		-H "Authorization: Bearer $(T)" | python3 -m json.tool
 
 history-db:
-	@curl -s http://localhost:$(PORT)/history/$(SESSION)/db | python3 -m json.tool
+	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
+	@curl -s http://localhost:$(PORT)/history/$(SESSION)/db \
+		-H "Authorization: Bearer $(T)" | python3 -m json.tool

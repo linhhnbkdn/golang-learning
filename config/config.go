@@ -13,6 +13,7 @@ type Config struct {
 	RedisTTL     int
 	LLMProvider  string
 	OpenAIAPIKey string
+	JWTSecret    string
 	Port         string
 }
 
@@ -41,6 +42,7 @@ func Load() Config {
 		RedisTTL:     ttl,
 		LLMProvider:  os.Getenv("LLM_PROVIDER"),
 		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
 		Port:         port,
 	}
 }

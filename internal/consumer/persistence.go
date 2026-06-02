@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"golang-learning/config"
 	"golang-learning/internal/application/usecase"
 	"golang-learning/shared"
 
@@ -16,11 +17,11 @@ type PersistenceWorker struct {
 	reader  *kafka.Reader
 }
 
-func NewPersistenceWorker(brokers []string, useCase *usecase.PersistSessionUseCase) *PersistenceWorker {
+func NewPersistenceWorker(cfg config.Config, useCase *usecase.PersistSessionUseCase) *PersistenceWorker {
 	return &PersistenceWorker{
 		useCase: useCase,
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:  brokers,
+			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "persistence-worker",
 			Topic:    "chat.completed",
 			MinBytes: 1,
