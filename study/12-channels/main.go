@@ -27,6 +27,19 @@ func square(in <-chan int) <-chan int {
 	return out
 }
 
+func genDoubleFilter(n int) <-chan int {
+	out := make(chan int)
+	go func() {
+		for i := 1; i <= n; i++ {
+			if i%2 == 0 {
+				out <- i * 2
+			}
+		}
+		close(out)
+	}()
+	return out
+}
+
 func main() {
 	// Unbuffered channel — send block cho đến khi có receiver
 	ch := make(chan int)
@@ -75,4 +88,9 @@ func main() {
 	// filter(in) → chỉ giữ số chẵn
 	// main nhận và in ra tất cả
 	// Test với n=10
+	genf := genDoubleFilter(10)
+	for v := range genf {
+		fmt.Print(v, " ")
+	}
+	fmt.Println()
 }

@@ -51,6 +51,8 @@ func main() {
 
 	// Nil pointer
 	var np *int
+	var i int = 10
+	np = &i
 	fmt.Println("nil pointer:", np)
 	// *np  ← panic! đừng dereference nil
 
