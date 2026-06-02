@@ -68,15 +68,24 @@ func (h *ChatHandler) PostChat(c *gin.Context) {
 	userID := c.GetString(middleware.UserIDKey)
 	ctx := c.Request.Context()
 
+	// Claim ownership atomically BEFORE publishing — prevents session takeover.
+	// If session already exists and belongs to another user, reject immediately.
+	owned, err := h.ownerStore.ClaimOwner(ctx, body.SessionID, userID)
+	if err != nil {
+		h.log.Error("claim session owner failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	if !owned {
+		c.JSON(http.StatusForbidden, gin.H{"error": "session belongs to another user"})
+		return
+	}
+
 	requestID, err := h.sendMessage.Execute(ctx, body.SessionID, body.Content)
 	if err != nil {
 		h.log.Error("send message failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-
-	if err := h.ownerStore.SetOwner(ctx, body.SessionID, userID); err != nil {
-		h.log.Warn("set session owner failed", zap.Error(err), zap.String("session_id", body.SessionID))
 	}
 
 	h.log.Info("chat request published",

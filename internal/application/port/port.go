@@ -29,6 +29,9 @@ type TokenGenerator interface {
 }
 
 type SessionOwnerStore interface {
-	SetOwner(ctx context.Context, sessionID, userID string) error
+	// ClaimOwner atomically sets owner if not exists (SetNX).
+	// Returns true if this user owns the session (claimed now or already owned by them).
+	// Returns false if the session is owned by a different user.
+	ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error)
 	GetOwner(ctx context.Context, sessionID string) (string, error)
 }
