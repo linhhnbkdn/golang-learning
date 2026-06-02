@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func main() {
 	// Tạo map với literal
@@ -34,6 +37,7 @@ func main() {
 	words := []string{"go", "python", "go", "java", "go", "python"}
 	for _, w := range words {
 		counts[w]++ // zero value của int là 0, nên ok khi key chưa tồn tại
+		fmt.Printf("count of %s: %d\n", w, counts[w])
 	}
 	fmt.Println("counts:", counts)
 
@@ -48,6 +52,12 @@ func main() {
 	// TODO: Đếm tần suất từng từ trong câu sau:
 	sentence := "the quick brown fox jumps over the lazy dog the fox"
 	// Dùng strings.Fields(sentence) để tách từ
+	words = strings.Split(sentence, " ")
+	wordCounts := make(map[string]int)
 	// In ra map và tìm từ xuất hiện nhiều nhất
-	_ = sentence
+	for _, w := range words {
+		w = strings.Trim(w, " ") // loại bỏ dấu câu
+		wordCounts[w]++
+	}
+	fmt.Println("word counts:", wordCounts)
 }

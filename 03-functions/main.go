@@ -29,6 +29,22 @@ func sum(nums ...int) int {
 	return total
 }
 
+func minMax(nums ...int) (int, int) {
+	if len(nums) == 0 {
+		panic("minMax requires at least one number")
+	}
+	min, max := nums[0], nums[0]
+	for _, n := range nums {
+		if n < min {
+			min = n
+		}
+		if n > max {
+			max = n
+		}
+	}
+	return min, max
+}
+
 func main() {
 	fmt.Println("3+5 =", add(3, 5))
 	fmt.Println("3*5 =", multiply(3, 5))
@@ -52,4 +68,6 @@ func main() {
 	// TODO: Viết hàm minMax(nums ...int) (int, int)
 	// Trả về (min, max) trong danh sách
 	// Test: minMax(3, 1, 4, 1, 5, 9, 2, 6) → min=1, max=9
+	min, max := minMax(3, 1, 4, 1, 5, 9, 2, 6)
+	fmt.Printf("min=%d, max=%d\n", min, max)
 }

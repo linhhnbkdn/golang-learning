@@ -21,11 +21,23 @@ func main() {
 	fmt.Printf("float64(42)=%v  int(3.14)=%v\n", f2, i2)
 
 	// String ↔ rune/byte
-	r := 'A'             // rune = int32
+	r := 'A' // rune = int32
 	fmt.Printf("rune A = %d, char = %c\n", r, r)
 	fmt.Printf("string A = %s\n", string(r))
 
 	// TODO: Khai báo tuổi (int=22), GPA (float64=3.75), tên (string="Li")
 	// Convert tuổi → float64, convert GPA → int
 	// In ra tất cả kèm kiểu dữ liệu dùng %T
+	var age int = 22
+	var gpa float64 = 3.75
+	var name string = "Li"
+
+	ageFloat := float64(age)
+	gpaInt := int(gpa)
+
+	fmt.Printf("age=%v type=%T\n", age, age)
+	fmt.Printf("gpa=%v type=%T\n", gpa, gpa)
+	fmt.Printf("name=%v type=%T\n", name, name)
+	fmt.Printf("age as float64: %v type=%T\n", ageFloat, ageFloat)
+	fmt.Printf("gpa as int: %v type=%T\n", gpaInt, gpaInt)
 }

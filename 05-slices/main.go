@@ -2,6 +2,15 @@ package main
 
 import "fmt"
 
+func reverse(s []int) []int {
+	n := len(s)
+	reversed := make([]int, n)
+	for i, v := range s {
+		reversed[n-1-i] = v
+	}
+	return reversed
+}
+
 func main() {
 	// Array — fixed size, ít dùng trực tiếp
 	arr := [3]int{1, 2, 3}
@@ -37,10 +46,12 @@ func main() {
 	}
 	for _, row := range matrix {
 		fmt.Println(row)
+		fmt.Println("row len:", len(row), "cap:", cap(row))
 	}
 
 	// TODO: Viết hàm reverse(s []int) []int
 	// Đảo ngược slice, trả về slice MỚI (không sửa bản gốc)
 	// Test: reverse([]int{1,2,3,4,5}) → [5 4 3 2 1]
 	// Hint: dùng make để tạo slice mới
+	fmt.Println("reversed:", reverse([]int{1, 2, 3, 4, 5}))
 }

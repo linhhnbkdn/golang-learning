@@ -67,4 +67,17 @@ func main() {
 	// TODO: Viết FizzBuzz từ 1 đến 30
 	// Chia hết 15 → "FizzBuzz", chia hết 3 → "Fizz", chia hết 5 → "Buzz"
 	// Còn lại → in số đó
+	for i := 1; i <= 30; i++ {
+		switch {
+		case i%15 == 0:
+			fmt.Print("FizzBuzz ")
+		case i%3 == 0:
+			fmt.Print("Fizz ")
+		case i%5 == 0:
+			fmt.Print("Buzz ")
+		default:
+			fmt.Print(i, " ")
+		}
+	}
+	fmt.Println()
 }
