@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"golang-learning/config"
-	gatewaypostgres "golang-learning/internal/adapter/gateway/postgres"
+	gatewaypostgres "golang-learning/internal/adapter/gateway/store"
 
 	"github.com/joho/godotenv"
 	gormpg "gorm.io/driver/postgres"

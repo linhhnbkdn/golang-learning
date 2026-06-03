@@ -6,8 +6,8 @@ import (
 
 	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/consumer"
-	"golang-learning/internal/adapter/gateway/event"
-	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	"golang-learning/internal/adapter/gateway/broker"
+	"golang-learning/internal/adapter/gateway/cache"
 	"golang-learning/internal/framework/llm"
 	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
@@ -27,10 +27,10 @@ func main() {
 			logger.New,
 			frameworkredis.NewClient,
 			newTokenGenerator,
-			event.NewEventPublisher,
-			redisgateway.NewConversationCache,
-			func(c *redisgateway.ConversationCache) usecase.ConversationCache { return c },
-			func(p *event.EventPublisher) usecase.EventPublisher              { return p },
+			broker.NewEventPublisher,
+			cache.NewConversationCache,
+			func(c *cache.ConversationCache) usecase.ConversationCache { return c },
+			func(p *broker.EventPublisher) usecase.EventPublisher      { return p },
 			usecase.NewProcessChatRequest,
 			consumer.NewWorker,
 		),

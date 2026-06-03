@@ -9,9 +9,9 @@ import (
 	"golang-learning/internal/adapter/controller/http/handler"
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/adapter/controller/http/state"
-	"golang-learning/internal/adapter/gateway/event"
-	"golang-learning/internal/adapter/gateway/postgres"
-	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	"golang-learning/internal/adapter/gateway/broker"
+	"golang-learning/internal/adapter/gateway/cache"
+	"golang-learning/internal/adapter/gateway/store"
 	frameworkpostgres "golang-learning/internal/framework/postgres"
 	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
@@ -34,11 +34,11 @@ func main() {
 			frameworkredis.NewClient,
 			frameworkpostgres.NewDB,
 			newSSEState,
-			event.NewEventPublisher,
-			redisgateway.NewConversationCache,
-			redisgateway.NewSessionOwnerStore,
-			redisgateway.NewRequestOwnerStore,
-			postgres.NewMessageStore,
+			broker.NewEventPublisher,
+			cache.NewConversationCache,
+			cache.NewSessionOwnerStore,
+			cache.NewRequestOwnerStore,
+			store.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
 			asRequestOwnerStore,
@@ -53,11 +53,11 @@ func main() {
 	).Run()
 }
 
-func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache { return c }
-func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore { return s }
-func asRequestOwnerStore(r *redisgateway.RequestOwnerStore) usecase.RequestOwnerStore { return r }
-func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                    { return s }
-func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                 { return p }
+func asConversationCache(c *cache.ConversationCache) usecase.ConversationCache { return c }
+func asSessionOwnerStore(s *cache.SessionOwnerStore) usecase.SessionOwnerStore { return s }
+func asRequestOwnerStore(r *cache.RequestOwnerStore) usecase.RequestOwnerStore { return r }
+func asMessageStore(s *store.MessageStore) usecase.MessageStore                { return s }
+func asEventPublisher(p *broker.EventPublisher) usecase.EventPublisher         { return p }
 
 func newSSEState() *state.SSEState { return &state.SSEState{} }
 

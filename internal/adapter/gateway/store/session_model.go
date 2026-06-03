@@ -1,4 +1,4 @@
-package postgres
+package store
 
 type SessionModel struct {
 	SessionID string         `gorm:"column:session_id;primaryKey"`
