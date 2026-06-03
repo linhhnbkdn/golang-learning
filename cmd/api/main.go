@@ -26,6 +26,7 @@ import (
 
 func main() {
 	_ = godotenv.Load()
+	gin.SetMode(gin.ReleaseMode)
 
 	fx.New(
 		fx.Provide(
