@@ -27,6 +27,8 @@ func NewEventPublisher(cfg config.Config) *EventPublisherImpl {
 			Addr:         kafka.TCP(cfg.KafkaBrokers...),
 			Balancer:     &kafka.LeastBytes{},
 			BatchTimeout: 10 * time.Millisecond,
+			BatchSize:    500,
+			Async:        true, // non-blocking publish — tăng throughput
 		},
 	}
 }
