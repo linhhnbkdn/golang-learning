@@ -14,6 +14,48 @@ GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
                                       Persistence Worker ──► PostgreSQL
 ```
 
+### Sequence Diagram
+
+```
+Client        API (JWT+Handler)    Redis        Kafka         Worker      Persistence   PostgreSQL
+  │                  │               │             │              │             │             │
+  │══════════════ POST /chat ═══════════════════════════════════════════════════════════════│
+  │                  │               │             │              │             │             │
+  ├── POST /chat ───►│               │             │              │             │             │
+  │                  ├─ClaimOwner───►│             │              │             │             │
+  │                  │  SetNX        │             │              │             │             │
+  │                  │◄─owned=true───┤             │              │             │             │
+  │                  ├─publish───────────────────►│              │             │             │
+  │                  │                             │  chat.requests             │             │
+  │                  ├─SetRequestOwner────────────►│              │             │             │
+  │◄─ {request_id} ──┤               │             │              │             │             │
+  │                  │               │             │              │             │             │
+  │══════════════ GET /chat/stream/:request_id ════════════════════════════════════════════│
+  │                  │               │             │              │             │             │
+  ├── GET /stream ──►│               │             │              │             │             │
+  │                  ├─GetRequestOwner────────────►│              │             │             │
+  │                  │◄─userID───────────────────┤│              │             │             │
+  │                  ├─Register SSE channel        │              │             │             │
+  │                  │               │             ├─consume─────►│             │             │
+  │                  │               │             │        generate tokens      │             │
+  │                  │               │             │◄─publish token─────────────             │             │
+  │                  │◄─Route token──────────────────  chat.responses            │             │
+  │◄─ SSE token ─────┤               │             │              │             │             │
+  │        ...       │               │             │              │             │             │
+  │◄─ SSE [DONE] ────┤               │             │              │             │             │
+  │                  │               │             │              │             │             │
+  │══════════════ LƯU VÀO DB ════════════════════════════════════════════════════════════│
+  │                  │               │             │              │             │             │
+  │                  │               │◄─SaveMessage┤              │             │             │
+  │                  │               │  user+reply │              │             │             │
+  │                  │               │             │◄─publish─────┤             │             │
+  │                  │               │             │  chat.completed             │             │
+  │                  │               │             ├─consume──────────────────►│             │
+  │                  │               │◄─GetHistory─────────────────────────────┤             │
+  │                  │               │  (filter requestID)         │            ├─SaveMessage►│
+  │                  │               │             │              │             │   INSERT    │
+```
+
 ### Clean Architecture Rings
 
 ```
