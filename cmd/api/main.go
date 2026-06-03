@@ -5,16 +5,15 @@ import (
 	"net/http"
 
 	"golang-learning/config"
-	"golang-learning/internal/api"
-	"golang-learning/internal/api/handler"
-	"golang-learning/internal/api/middleware"
-	"golang-learning/internal/api/state"
-	"golang-learning/internal/application/port"
-	"golang-learning/internal/application/usecase"
-	kafkainfra "golang-learning/internal/infrastructure/kafka"
-	"golang-learning/internal/infrastructure/postgres"
-	"golang-learning/internal/infrastructure/redisstore"
+	"golang-learning/internal/adapter/consumer"
+	"golang-learning/internal/adapter/event"
+	handler "golang-learning/internal/adapter/http/handler"
+	"golang-learning/internal/adapter/http/middleware"
+	"golang-learning/internal/adapter/http/state"
+	"golang-learning/internal/adapter/repository/postgres"
+	redisrepo "golang-learning/internal/adapter/repository/redis"
 	"golang-learning/internal/logger"
+	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,9 +34,9 @@ func main() {
 			newRedisClient,
 			newPostgresPool,
 			newSSEState,
-			kafkainfra.NewEventPublisher,
-			redisstore.NewConversationCache,
-			redisstore.NewSessionOwnerStore,
+			event.NewEventPublisher,
+			redisrepo.NewConversationCache,
+			redisrepo.NewSessionOwnerStore,
 			postgres.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
@@ -53,10 +52,10 @@ func main() {
 }
 
 // interface adapters — fx needs explicit wiring for concrete → interface
-func asConversationCache(c *redisstore.ConversationCache) port.ConversationCache { return c }
-func asSessionOwnerStore(s *redisstore.SessionOwnerStore) port.SessionOwnerStore { return s }
-func asMessageStore(s *postgres.MessageStore) port.MessageStore                  { return s }
-func asEventPublisher(p *kafkainfra.EventPublisher) port.EventPublisher          { return p }
+func asConversationCache(c *redisrepo.ConversationCache) usecase.ConversationCache { return c }
+func asSessionOwnerStore(s *redisrepo.SessionOwnerStore) usecase.SessionOwnerStore { return s }
+func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                 { return s }
+func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher              { return p }
 
 func newRedisClient(cfg config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
@@ -86,7 +85,7 @@ func startResponseConsumer(lc fx.Lifecycle, cfg config.Config, s *state.SSEState
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
-			go api.ConsumeResponses(ctx, r, s, log)
+			go consumer.ConsumeResponses(ctx, r, s, log)
 			return nil
 		},
 		OnStop: func(_ context.Context) error {

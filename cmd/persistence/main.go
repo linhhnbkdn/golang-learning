@@ -4,12 +4,11 @@ import (
 	"context"
 
 	"golang-learning/config"
-	"golang-learning/internal/application/port"
-	"golang-learning/internal/application/usecase"
-	"golang-learning/internal/consumer"
-	"golang-learning/internal/infrastructure/postgres"
-	"golang-learning/internal/infrastructure/redisstore"
+	"golang-learning/internal/adapter/consumer"
+	"golang-learning/internal/adapter/repository/postgres"
+	redisrepo "golang-learning/internal/adapter/repository/redis"
 	"golang-learning/internal/logger"
+	"golang-learning/internal/usecase"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -27,10 +26,10 @@ func main() {
 			logger.New,
 			newRedisClient,
 			newPostgresPool,
-			redisstore.NewConversationCache,
+			redisrepo.NewConversationCache,
 			postgres.NewMessageStore,
-			func(c *redisstore.ConversationCache) port.ConversationCache { return c },
-			func(s *postgres.MessageStore) port.MessageStore             { return s },
+			func(c *redisrepo.ConversationCache) usecase.ConversationCache { return c },
+			func(s *postgres.MessageStore) usecase.MessageStore            { return s },
 			usecase.NewPersistSession,
 			consumer.NewPersistenceWorker,
 		),

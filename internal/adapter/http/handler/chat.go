@@ -7,11 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"golang-learning/internal/api/middleware"
-	"golang-learning/internal/api/state"
-	"golang-learning/internal/application/port"
-	"golang-learning/internal/application/usecase"
+	"golang-learning/internal/adapter/http/middleware"
+	"golang-learning/internal/adapter/http/state"
 	"golang-learning/internal/domain"
+	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -21,8 +20,8 @@ import (
 type ChatHandler struct {
 	sendMessage *usecase.SendMessageUseCase
 	getHistory  *usecase.GetHistoryUseCase
-	store       port.MessageStore
-	ownerStore  port.SessionOwnerStore
+	store       usecase.MessageStore
+	ownerStore  usecase.SessionOwnerStore
 	sseState    *state.SSEState
 	log         *zap.Logger
 }
@@ -30,8 +29,8 @@ type ChatHandler struct {
 func NewChatHandler(
 	sendMessage *usecase.SendMessageUseCase,
 	getHistory *usecase.GetHistoryUseCase,
-	store port.MessageStore,
-	ownerStore port.SessionOwnerStore,
+	store usecase.MessageStore,
+	ownerStore usecase.SessionOwnerStore,
 	sseState *state.SSEState,
 	log *zap.Logger,
 ) *ChatHandler {

@@ -1,10 +1,10 @@
-package api
+package consumer
 
 import (
 	"context"
 	"encoding/json"
 
-	"golang-learning/internal/api/state"
+	"golang-learning/internal/adapter/http/state"
 	"golang-learning/shared"
 
 	kafka "github.com/segmentio/kafka-go"

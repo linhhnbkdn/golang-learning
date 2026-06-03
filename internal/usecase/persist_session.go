@@ -3,16 +3,15 @@ package usecase
 import (
 	"context"
 
-	"golang-learning/internal/application/port"
 	"golang-learning/shared"
 )
 
 type PersistSessionUseCase struct {
-	cache port.ConversationCache
-	store port.MessageStore
+	cache ConversationCache
+	store MessageStore
 }
 
-func NewPersistSession(cache port.ConversationCache, store port.MessageStore) *PersistSessionUseCase {
+func NewPersistSession(cache ConversationCache, store MessageStore) *PersistSessionUseCase {
 	return &PersistSessionUseCase{cache: cache, store: store}
 }
 

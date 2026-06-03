@@ -3,15 +3,14 @@ package usecase
 import (
 	"context"
 
-	"golang-learning/internal/application/port"
 	"golang-learning/shared"
 )
 
 type SendMessageUseCase struct {
-	publisher port.EventPublisher
+	publisher EventPublisher
 }
 
-func NewSendMessage(publisher port.EventPublisher) *SendMessageUseCase {
+func NewSendMessage(publisher EventPublisher) *SendMessageUseCase {
 	return &SendMessageUseCase{publisher: publisher}
 }
 

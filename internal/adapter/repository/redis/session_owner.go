@@ -1,4 +1,4 @@
-package redisstore
+package redis
 
 import (
 	"context"
@@ -26,16 +26,14 @@ func NewSessionOwnerStore(client *redis.Client) *SessionOwnerStore {
 func (s *SessionOwnerStore) ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error) {
 	key := fmt.Sprintf("session_owner:%s", sessionID)
 
-	// Atomic: only sets if key does not exist
 	claimed, err := s.client.SetNX(ctx, key, userID, s.ttl).Result()
 	if err != nil {
 		return false, err
 	}
 	if claimed {
-		return true, nil // first to claim
+		return true, nil
 	}
 
-	// Key already exists — check if this user is the existing owner
 	existing, err := s.client.Get(ctx, key).Result()
 	if err != nil {
 		return false, err

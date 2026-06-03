@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"golang-learning/config"
-	"golang-learning/internal/application/usecase"
+	"golang-learning/internal/usecase"
 	"golang-learning/shared"
 
 	kafka "github.com/segmentio/kafka-go"

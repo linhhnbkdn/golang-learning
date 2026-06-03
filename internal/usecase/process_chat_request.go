@@ -4,21 +4,20 @@ import (
 	"context"
 	"strings"
 
-	"golang-learning/internal/application/port"
 	"golang-learning/internal/domain"
 	"golang-learning/shared"
 )
 
 type ProcessChatRequestUseCase struct {
-	generator port.TokenGenerator
-	publisher port.EventPublisher
-	cache     port.ConversationCache
+	generator TokenGenerator
+	publisher EventPublisher
+	cache     ConversationCache
 }
 
 func NewProcessChatRequest(
-	generator port.TokenGenerator,
-	publisher port.EventPublisher,
-	cache port.ConversationCache,
+	generator TokenGenerator,
+	publisher EventPublisher,
+	cache ConversationCache,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
 		generator: generator,

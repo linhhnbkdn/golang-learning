@@ -3,15 +3,14 @@ package usecase
 import (
 	"context"
 
-	"golang-learning/internal/application/port"
 	"golang-learning/internal/domain"
 )
 
 type GetHistoryUseCase struct {
-	cache port.ConversationCache
+	cache ConversationCache
 }
 
-func NewGetHistory(cache port.ConversationCache) *GetHistoryUseCase {
+func NewGetHistory(cache ConversationCache) *GetHistoryUseCase {
 	return &GetHistoryUseCase{cache: cache}
 }
 
