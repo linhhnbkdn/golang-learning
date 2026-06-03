@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"runtime"
 
 	"golang-learning/config"
 	"golang-learning/internal/usecase"
@@ -13,13 +14,15 @@ import (
 )
 
 type Worker struct {
-	useCase *usecase.ProcessChatRequestUseCase
-	reader  *kafka.Reader
+	useCase     *usecase.ProcessChatRequestUseCase
+	reader      *kafka.Reader
+	concurrency int
 }
 
 func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *Worker {
 	return &Worker{
-		useCase: useCase,
+		useCase:     useCase,
+		concurrency: runtime.NumCPU() * 4,
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "llm-worker",
@@ -32,7 +35,9 @@ func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *W
 
 func (w *Worker) Run(ctx context.Context) error {
 	defer w.reader.Close()
-	slog.Info("worker started — listening on chat.requests")
+	slog.Info("worker started", "concurrency", w.concurrency)
+
+	sem := make(chan struct{}, w.concurrency)
 
 	for {
 		msg, err := w.reader.ReadMessage(ctx)
@@ -50,9 +55,13 @@ func (w *Worker) Run(ctx context.Context) error {
 			continue
 		}
 
-		slog.Info("processing request", "request_id", req.RequestID, "session_id", req.SessionID)
-		if err := w.useCase.Execute(ctx, req); err != nil {
-			slog.Error("process chat request failed", "err", err, "request_id", req.RequestID)
-		}
+		sem <- struct{}{}
+		go func(req shared.ChatRequest) {
+			defer func() { <-sem }()
+			slog.Info("processing request", "request_id", req.RequestID)
+			if err := w.useCase.Execute(ctx, req); err != nil {
+				slog.Error("process chat request failed", "err", err, "request_id", req.RequestID)
+			}
+		}(req)
 	}
 }
