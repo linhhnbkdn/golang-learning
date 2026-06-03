@@ -1,11 +1,11 @@
 import time
 import os
+import uuid
 import jwt
 from locust import HttpUser, task, between
 
 
 JWT_SECRET = os.getenv("JWT_SECRET", "secret")
-SESSION_ID = "benchmark-session"
 
 
 def make_token(user_id: str) -> str:
@@ -20,7 +20,9 @@ class ChatUser(HttpUser):
     wait_time = between(1, 3)
 
     def on_start(self):
-        self.token = make_token(f"user-{self.user_id}")
+        self.uid = str(uuid.uuid4())[:8]
+        self.session_id = f"bench-{self.uid}"
+        self.token = make_token(self.uid)
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
     @task
@@ -28,7 +30,7 @@ class ChatUser(HttpUser):
         # Bước 1: gửi message
         with self.client.post(
             "/chat",
-            json={"session_id": SESSION_ID, "content": "xin chao"},
+            json={"session_id": self.session_id, "content": "xin chao"},
             headers=self.headers,
             catch_response=True,
         ) as resp:
@@ -42,7 +44,6 @@ class ChatUser(HttpUser):
             resp.success()
 
         # Bước 2: stream response
-        start = time.time()
         with self.client.get(
             f"/chat/stream/{request_id}",
             headers=self.headers,
@@ -56,5 +57,4 @@ class ChatUser(HttpUser):
             for line in resp.iter_lines():
                 if line == b"data: [DONE]":
                     break
-            elapsed = (time.time() - start) * 1000
             resp.success()
