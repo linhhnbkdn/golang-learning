@@ -16,12 +16,12 @@ const (
 	topicCompleted = "chat.completed"
 )
 
-type EventPublisher struct {
+type EventPublisherImpl struct {
 	writer *kafka.Writer
 }
 
-func NewEventPublisher(cfg config.Config) *EventPublisher {
-	return &EventPublisher{
+func NewEventPublisher(cfg config.Config) *EventPublisherImpl {
+	return &EventPublisherImpl{
 		writer: &kafka.Writer{
 			Addr:     kafka.TCP(cfg.KafkaBrokers...),
 			Balancer: &kafka.LeastBytes{},
@@ -29,25 +29,25 @@ func NewEventPublisher(cfg config.Config) *EventPublisher {
 	}
 }
 
-func (p *EventPublisher) PublishRequest(ctx context.Context, req shared.ChatRequest) error {
+func (p *EventPublisherImpl) PublishRequest(ctx context.Context, req shared.ChatRequest) error {
 	return p.write(ctx, topicRequests, req)
 }
 
-func (p *EventPublisher) PublishResponse(ctx context.Context, resp shared.ChatResponse) error {
+func (p *EventPublisherImpl) PublishResponse(ctx context.Context, resp shared.ChatResponse) error {
 	return p.write(ctx, topicResponses, resp)
 }
 
-func (p *EventPublisher) PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error {
+func (p *EventPublisherImpl) PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error {
 	return p.write(ctx, topicCompleted, completed)
 }
 
-func (p *EventPublisher) Flush() {}
+func (p *EventPublisherImpl) Flush() {}
 
-func (p *EventPublisher) Close() error {
+func (p *EventPublisherImpl) Close() error {
 	return p.writer.Close()
 }
 
-func (p *EventPublisher) write(ctx context.Context, topic string, v any) error {
+func (p *EventPublisherImpl) write(ctx context.Context, topic string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err

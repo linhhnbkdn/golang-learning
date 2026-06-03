@@ -7,11 +7,11 @@ import (
 )
 
 type PersistSessionUseCase struct {
-	cache ConversationCache
-	store MessageStore
+	cache IConversationCache
+	store IMessageStore
 }
 
-func NewPersistSession(cache ConversationCache, store MessageStore) *PersistSessionUseCase {
+func NewPersistSession(cache IConversationCache, store IMessageStore) *PersistSessionUseCase {
 	return &PersistSessionUseCase{cache: cache, store: store}
 }
 

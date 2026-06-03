@@ -29,8 +29,8 @@ func main() {
 			newTokenGenerator,
 			broker.NewEventPublisher,
 			cache.NewConversationCache,
-			func(c *cache.ConversationCache) usecase.ConversationCache { return c },
-			func(p *broker.EventPublisher) usecase.EventPublisher      { return p },
+			func(c *cache.ConversationCacheImpl) usecase.IConversationCache { return c },
+			func(p *broker.EventPublisherImpl) usecase.IEventPublisher      { return p },
 			usecase.NewProcessChatRequest,
 			consumer.NewWorker,
 		),
@@ -38,7 +38,7 @@ func main() {
 	).Run()
 }
 
-func newTokenGenerator(cfg config.Config) (usecase.TokenGenerator, error) {
+func newTokenGenerator(cfg config.Config) (usecase.ITokenGenerator, error) {
 	switch cfg.LLMProvider {
 	case "mock", "":
 		return &llm.MockLLMStrategy{}, nil

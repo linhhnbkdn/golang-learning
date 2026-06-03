@@ -9,15 +9,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type MessageStore struct {
+type MessageStoreImpl struct {
 	db *gorm.DB
 }
 
-func NewMessageStore(db *gorm.DB) *MessageStore {
-	return &MessageStore{db: db}
+func NewMessageStore(db *gorm.DB) *MessageStoreImpl {
+	return &MessageStoreImpl{db: db}
 }
 
-func (s *MessageStore) SaveMessage(ctx context.Context, msg entity.Message) error {
+func (s *MessageStoreImpl) SaveMessage(ctx context.Context, msg entity.Message) error {
 	session := SessionModel{SessionID: msg.SessionID}
 	if err := s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
@@ -29,7 +29,7 @@ func (s *MessageStore) SaveMessage(ctx context.Context, msg entity.Message) erro
 	return s.db.WithContext(ctx).Omit("Session").Create(&row).Error
 }
 
-func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
+func (s *MessageStoreImpl) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	var rows []MessageModel
 	if err := s.db.WithContext(ctx).
 		Where("session_id = ?", sessionID).

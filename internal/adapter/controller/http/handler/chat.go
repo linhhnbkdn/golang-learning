@@ -20,9 +20,9 @@ import (
 type ChatHandler struct {
 	sendMessage  *usecase.SendMessageUseCase
 	getHistory   *usecase.GetHistoryUseCase
-	store        usecase.MessageStore
-	ownerStore   usecase.SessionOwnerStore
-	requestOwner usecase.RequestOwnerStore
+	store        usecase.IMessageStore
+	ownerStore   usecase.ISessionOwnerStore
+	requestOwner usecase.IRequestOwnerStore
 	sseState     *state.SSEState
 	log          *zap.Logger
 }
@@ -30,9 +30,9 @@ type ChatHandler struct {
 func NewChatHandler(
 	sendMessage *usecase.SendMessageUseCase,
 	getHistory *usecase.GetHistoryUseCase,
-	store usecase.MessageStore,
-	ownerStore usecase.SessionOwnerStore,
-	requestOwner usecase.RequestOwnerStore,
+	store usecase.IMessageStore,
+	ownerStore usecase.ISessionOwnerStore,
+	requestOwner usecase.IRequestOwnerStore,
 	sseState *state.SSEState,
 	log *zap.Logger,
 ) *ChatHandler {

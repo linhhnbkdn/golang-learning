@@ -9,15 +9,15 @@ import (
 )
 
 type ProcessChatRequestUseCase struct {
-	generator TokenGenerator
-	publisher EventPublisher
-	cache     ConversationCache
+	generator ITokenGenerator
+	publisher IEventPublisher
+	cache     IConversationCache
 }
 
 func NewProcessChatRequest(
-	generator TokenGenerator,
-	publisher EventPublisher,
-	cache ConversationCache,
+	generator ITokenGenerator,
+	publisher IEventPublisher,
+	cache IConversationCache,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
 		generator: generator,

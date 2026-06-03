@@ -8,13 +8,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type SessionOwnerStore struct {
+type SessionOwnerStoreImpl struct {
 	client *redis.Client
 	ttl    time.Duration
 }
 
-func NewSessionOwnerStore(client *redis.Client) *SessionOwnerStore {
-	return &SessionOwnerStore{
+func NewSessionOwnerStore(client *redis.Client) *SessionOwnerStoreImpl {
+	return &SessionOwnerStoreImpl{
 		client: client,
 		ttl:    24 * time.Hour,
 	}
@@ -23,7 +23,7 @@ func NewSessionOwnerStore(client *redis.Client) *SessionOwnerStore {
 // ClaimOwner uses SetNX (atomic set-if-not-exists).
 // Returns true if this user owns the session (just claimed or already theirs).
 // Returns false if the session is owned by a different user.
-func (s *SessionOwnerStore) ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error) {
+func (s *SessionOwnerStoreImpl) ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error) {
 	key := fmt.Sprintf("session_owner:%s", sessionID)
 
 	claimed, err := s.client.SetNX(ctx, key, userID, s.ttl).Result()
@@ -41,7 +41,7 @@ func (s *SessionOwnerStore) ClaimOwner(ctx context.Context, sessionID, userID st
 	return existing == userID, nil
 }
 
-func (s *SessionOwnerStore) GetOwner(ctx context.Context, sessionID string) (string, error) {
+func (s *SessionOwnerStoreImpl) GetOwner(ctx context.Context, sessionID string) (string, error) {
 	key := fmt.Sprintf("session_owner:%s", sessionID)
 	return s.client.Get(ctx, key).Result()
 }

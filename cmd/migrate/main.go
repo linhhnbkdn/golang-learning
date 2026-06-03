@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"golang-learning/config"
-	gatewaypostgres "golang-learning/internal/adapter/gateway/store"
+	gatewaystore "golang-learning/internal/adapter/gateway/store"
 
 	"github.com/joho/godotenv"
 	gormpg "gorm.io/driver/postgres"
@@ -23,8 +23,8 @@ func main() {
 	}
 
 	if err := db.AutoMigrate(
-		&gatewaypostgres.SessionModel{},
-		&gatewaypostgres.MessageModel{},
+		&gatewaystore.SessionModel{},
+		&gatewaystore.MessageModel{},
 	); err != nil {
 		slog.Error("migration failed", "err", err)
 		os.Exit(1)

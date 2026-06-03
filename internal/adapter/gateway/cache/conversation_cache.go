@@ -12,13 +12,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type ConversationCache struct {
+type ConversationCacheImpl struct {
 	client *redis.Client
 	ttl    time.Duration
 }
 
-func NewConversationCache(client *redis.Client, cfg config.Config) *ConversationCache {
-	return &ConversationCache{
+func NewConversationCache(client *redis.Client, cfg config.Config) *ConversationCacheImpl {
+	return &ConversationCacheImpl{
 		client: client,
 		ttl:    time.Duration(cfg.RedisTTL) * time.Second,
 	}
@@ -30,7 +30,7 @@ type messageRecord struct {
 	RequestID string `json:"request_id"`
 }
 
-func (c *ConversationCache) SaveMessage(ctx context.Context, msg entity.Message) error {
+func (c *ConversationCacheImpl) SaveMessage(ctx context.Context, msg entity.Message) error {
 	key := fmt.Sprintf("conversation:%s", msg.SessionID)
 	rec := messageRecord{
 		Role:      string(msg.Role),
@@ -48,7 +48,7 @@ func (c *ConversationCache) SaveMessage(ctx context.Context, msg entity.Message)
 	return c.client.Expire(ctx, key, c.ttl).Err()
 }
 
-func (c *ConversationCache) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
+func (c *ConversationCacheImpl) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	key := fmt.Sprintf("conversation:%s", sessionID)
 	raw, err := c.client.ZRange(ctx, key, 0, -1).Result()
 	if err != nil {

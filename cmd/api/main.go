@@ -53,11 +53,11 @@ func main() {
 	).Run()
 }
 
-func asConversationCache(c *cache.ConversationCache) usecase.ConversationCache { return c }
-func asSessionOwnerStore(s *cache.SessionOwnerStore) usecase.SessionOwnerStore { return s }
-func asRequestOwnerStore(r *cache.RequestOwnerStore) usecase.RequestOwnerStore { return r }
-func asMessageStore(s *store.MessageStore) usecase.MessageStore                { return s }
-func asEventPublisher(p *broker.EventPublisher) usecase.EventPublisher         { return p }
+func asConversationCache(c *cache.ConversationCacheImpl) usecase.IConversationCache { return c }
+func asSessionOwnerStore(s *cache.SessionOwnerStoreImpl) usecase.ISessionOwnerStore { return s }
+func asRequestOwnerStore(r *cache.RequestOwnerStoreImpl) usecase.IRequestOwnerStore { return r }
+func asMessageStore(s *store.MessageStoreImpl) usecase.IMessageStore                { return s }
+func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher         { return p }
 
 func newSSEState() *state.SSEState { return &state.SSEState{} }
 

@@ -7,14 +7,14 @@ import (
 )
 
 type SendMessageUseCase struct {
-	publisher EventPublisher
+	publisher IEventPublisher
 }
 
-func NewSendMessage(publisher EventPublisher) *SendMessageUseCase {
+func NewSendMessage(publisher IEventPublisher) *SendMessageUseCase {
 	return &SendMessageUseCase{publisher: publisher}
 }
 
-func (uc *SendMessageUseCase) Execute(ctx context.Context, sessionID, content string, out SendMessageOutputPort) {
+func (uc *SendMessageUseCase) Execute(ctx context.Context, sessionID, content string, out ISendMessageOutputPort) {
 	req := shared.NewChatRequest(sessionID, content)
 	if err := uc.publisher.PublishRequest(ctx, req); err != nil {
 		out.PresentError(err)
