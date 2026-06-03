@@ -1,0 +1,58 @@
+{
+  "editor.formatOnSave": true,
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.trimFinalNewlines": true,
+  "editor.renderWhitespace": "all",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.rulers": [80, 120],
+  "workbench.colorCustomizations": {
+    "editorRuler.foreground": "#ff4081",
+  },
+  "files.associations": {
+    "*.css": "tailwindcss",
+  },
+  "explorer.confirmDragAndDrop": false,
+  "makefile.configureOnOpen": true,
+  "explorer.confirmDelete": false,
+  "git.openRepositoryInParentFolders": "always",
+  "git.autofetch": true,
+  "[dockercompose]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "advanced",
+    "editor.quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": true,
+    },
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+  },
+  "terminal.integrated.enableMultiLinePasteWarning": "never",
+  "workbench.colorTheme": "Dark+",
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.tabSize": 2,
+    "editor.formatOnType": true,
+    "editor.codeLens": false,
+    "editor.formatOnSave": false,
+  },
+  "python.languageServer": "None",
+  "claudeCode.preferredLocation": "panel",
+  "python.createEnvironment.trigger": "off",
+  "workbench.editor.enablePreview": false,
+  "json.schemas": [
+
+  ],
+  "explorer.confirmPasteNative": false,
+  "gitlens.ai.model": "gitkraken",
+  "gitlens.ai.gitkraken.model": "gemini:gemini-2.5-flash",
+  "launch": {
+
+    "configurations": [],
+    "compounds": []
+  },
+}

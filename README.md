@@ -17,22 +17,22 @@ GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
 ### Clean Architecture Rings
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Frameworks & Drivers                                   │
-│  (framework/postgres, framework/redis, framework/llm)   │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Interface Adapters                               │  │
-│  │  (adapter/controller, adapter/gateway)            │  │
-│  │  ┌───────────────────────────────────────────┐   │  │
-│  │  │  Use Cases                                │   │  │
-│  │  │  (usecase/ + port interfaces)             │   │  │
-│  │  │  ┌───────────────────────────────────┐   │   │  │
-│  │  │  │  Entities                         │   │   │  │
-│  │  │  │  (entity/)                        │   │   │  │
-│  │  │  └───────────────────────────────────┘   │   │  │
-│  │  └───────────────────────────────────────────┘   │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Frameworks & Drivers                                        │
+│  (framework/postgres, framework/redis, framework/llm)        │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  Interface Adapters                                    │  │
+│  │  (adapter/controller, adapter/presenter, adapter/gateway)  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │  Use Cases                                       │  │  │
+│  │  │  (usecase/ + port interfaces)                    │  │  │
+│  │  │  ┌────────────────────────────────────────────┐  │  │  │
+│  │  │  │  Entities                                  │  │  │  │
+│  │  │  │  (entity/)                                 │  │  │  │
+│  │  │  └────────────────────────────────────────────┘  │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 **Services:**
@@ -47,7 +47,7 @@ GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
 | HTTP | Gin |
 | Event bus | Kafka |
 | Cache / SSE state | Redis |
-| Database | PostgreSQL |
+| Database | PostgreSQL + GORM |
 | Auth | JWT (golang-jwt/v5) |
 | DI | Uber fx |
 | Logging | Uber zap |
@@ -145,42 +145,59 @@ cmd/
   api/              # HTTP server entry point (Gin + fx wiring)
   worker/           # LLM consumer entry point
   persistence/      # DB persistence consumer entry point
-  migrate/          # Database migration entry point
+  migrate/          # Database migration entry point (GORM AutoMigrate)
   gentoken/         # JWT token generator CLI
 
 internal/
-  entity/           # Core domain types: Message, Session, MessageRole
+  entity/           # Entities ring — pure business types, no framework tags
+    message.go      # Message, MessageRole
+    session.go      # Session
 
-  usecase/          # Application use cases + port interfaces
-    port.go         # Interfaces: ConversationCache, EventPublisher, MessageStore,
-                    #             TokenGenerator, SessionOwnerStore, RequestOwnerStore
+  usecase/          # Use Cases ring — business logic + port interfaces
+    port.go         # Input/Output port interfaces
     send_message.go
     get_history.go
     process_chat_request.go
     persist_session.go
 
-  adapter/          # Interface Adapters ring (Uncle Bob)
-    controller/     # Inbound — receives input, calls use cases
+  adapter/          # Interface Adapters ring
+    controller/     # Inbound — parse input, call use cases
       http/
         handler/    # Gin HTTP handlers (ChatHandler)
         middleware/ # JWT auth middleware
         state/      # SSEState: in-memory request→channel router
       consumer/     # Kafka consumers (SSE fan-out, worker, persistence)
-    gateway/        # Outbound — implements port interfaces
-      event/        # Kafka publisher
-      postgres/     # PostgreSQL MessageStore
-      redis/        # ConversationCache, SessionOwnerStore, RequestOwnerStore
+    presenter/      # Format use case output → HTTP/gRPC response
+      http/         # JSON view models (MessageView, SendMessagePresenter)
+    gateway/        # Outbound — implement port interfaces
+      store/        # PostgreSQL: MessageStore + GORM models
+      cache/        # Redis: ConversationCache, SessionOwnerStore, RequestOwnerStore
+      broker/       # Kafka: EventPublisher
 
-  framework/        # Frameworks & Drivers ring
-    postgres/       # pgxpool connection factory
+  framework/        # Frameworks & Drivers ring — infrastructure setup only
+    postgres/       # GORM *gorm.DB connection factory
     redis/          # go-redis client factory
-    llm/            # Mock LLM token generator (Vietnamese responses)
+    llm/            # Mock LLM token generator
 
   module/
     logger/         # Zap logger factory
 
 config/             # Config loading from environment variables
-shared/             # Shared Kafka message schemas (ChatRequest, ChatResponse, ChatCompleted)
+shared/             # Shared Kafka message schemas
+```
+
+## Extending to gRPC
+
+The Clean Architecture structure makes adding gRPC straightforward — use cases are untouched:
+
+```
+adapter/
+  controller/
+    http/           # existing
+    grpc/           # add new gRPC handlers here
+  presenter/
+    http/           # existing
+    grpc/           # add new protobuf formatters here
 ```
 
 ## Build
