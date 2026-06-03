@@ -4,14 +4,35 @@ A Go learning project culminating in a production-style event-driven LLM streami
 
 ## Architecture
 
-Clean (Hexagonal) Architecture with event-driven async processing:
+### Data Flow
 
 ```
-POST /chat ──► Kafka topic: chat.requested ──► Worker (LLM call) ──► Kafka topic: chat.completed
-                                                        │
-GET /chat/stream/:id ◄── Redis SSE buffer ◄────────────┘
-                                                        │
-                                            Persistence Worker ──► PostgreSQL
+POST /chat ──► Kafka: chat.requested ──► Worker (LLM call) ──► Kafka: chat.completed
+                                                  │
+GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
+                                                  │
+                                      Persistence Worker ──► PostgreSQL
+```
+
+### Clean Architecture Rings
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Frameworks & Drivers                                   │
+│  (framework/postgres, framework/redis, framework/llm)   │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  Interface Adapters                               │  │
+│  │  (adapter/controller, adapter/gateway)            │  │
+│  │  ┌───────────────────────────────────────────┐   │  │
+│  │  │  Use Cases                                │   │  │
+│  │  │  (usecase/ + port interfaces)             │   │  │
+│  │  │  ┌───────────────────────────────────┐   │   │  │
+│  │  │  │  Entities                         │   │   │  │
+│  │  │  │  (entity/)                        │   │   │  │
+│  │  │  └───────────────────────────────────┘   │   │  │
+│  │  └───────────────────────────────────────────┘   │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
 **Services:**
@@ -98,6 +119,12 @@ All endpoints require `Authorization: Bearer <token>`.
 
 Returns `request_id` — use it with the stream endpoint.
 
+## Security
+
+- **Session ownership** — first user to open a session claims it via Redis `SetNX`. Subsequent requests from other users are rejected with `403 Forbidden`.
+- **Request ownership** — each `request_id` is bound to the user who created it. The SSE stream endpoint rejects connections from users who don't own the request (IDOR prevention).
+- **JWT auth** — all endpoints require a signed JWT token.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -115,20 +142,45 @@ Returns `request_id` — use it with the stream endpoint.
 
 ```
 cmd/
-  api/          # HTTP server entry point
-  worker/       # LLM consumer entry point
-  persistence/  # DB persistence consumer entry point
-  migrate/      # Database migration entry point
-  gentoken/     # JWT token generator CLI
+  api/              # HTTP server entry point (Gin + fx wiring)
+  worker/           # LLM consumer entry point
+  persistence/      # DB persistence consumer entry point
+  migrate/          # Database migration entry point
+  gentoken/         # JWT token generator CLI
+
 internal/
-  api/          # Handlers, middleware, SSE state
-  application/  # Use cases and port interfaces
-  domain/       # Core domain types
-  infrastructure/ # Kafka, Redis, PostgreSQL, LLM adapters
-  consumer/     # Kafka consumer logic
-  logger/       # Zap logger factory
-config/         # Config loading from env
-shared/         # Shared Kafka message schemas
+  entity/           # Core domain types: Message, Session, MessageRole
+
+  usecase/          # Application use cases + port interfaces
+    port.go         # Interfaces: ConversationCache, EventPublisher, MessageStore,
+                    #             TokenGenerator, SessionOwnerStore, RequestOwnerStore
+    send_message.go
+    get_history.go
+    process_chat_request.go
+    persist_session.go
+
+  adapter/          # Interface Adapters ring (Uncle Bob)
+    controller/     # Inbound — receives input, calls use cases
+      http/
+        handler/    # Gin HTTP handlers (ChatHandler)
+        middleware/ # JWT auth middleware
+        state/      # SSEState: in-memory request→channel router
+      consumer/     # Kafka consumers (SSE fan-out, worker, persistence)
+    gateway/        # Outbound — implements port interfaces
+      event/        # Kafka publisher
+      postgres/     # PostgreSQL MessageStore
+      redis/        # ConversationCache, SessionOwnerStore, RequestOwnerStore
+
+  framework/        # Frameworks & Drivers ring
+    postgres/       # pgxpool connection factory
+    redis/          # go-redis client factory
+    llm/            # Mock LLM token generator (Vietnamese responses)
+
+  module/
+    logger/         # Zap logger factory
+
+config/             # Config loading from environment variables
+shared/             # Shared Kafka message schemas (ChatRequest, ChatResponse, ChatCompleted)
 ```
 
 ## Build
