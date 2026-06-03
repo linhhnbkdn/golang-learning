@@ -16,44 +16,50 @@ GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
 
 ### Sequence Diagram
 
-```
-Client        API (JWT+Handler)    Redis        Kafka         Worker      Persistence   PostgreSQL
-  │                  │               │             │              │             │             │
-  │══════════════ POST /chat ═══════════════════════════════════════════════════════════════│
-  │                  │               │             │              │             │             │
-  ├── POST /chat ───►│               │             │              │             │             │
-  │                  ├─ClaimOwner───►│             │              │             │             │
-  │                  │  SetNX        │             │              │             │             │
-  │                  │◄─owned=true───┤             │              │             │             │
-  │                  ├─publish───────────────────►│              │             │             │
-  │                  │                             │  chat.requests             │             │
-  │                  ├─SetRequestOwner────────────►│              │             │             │
-  │◄─ {request_id} ──┤               │             │              │             │             │
-  │                  │               │             │              │             │             │
-  │══════════════ GET /chat/stream/:request_id ════════════════════════════════════════════│
-  │                  │               │             │              │             │             │
-  ├── GET /stream ──►│               │             │              │             │             │
-  │                  ├─GetRequestOwner────────────►│              │             │             │
-  │                  │◄─userID───────────────────┤│              │             │             │
-  │                  ├─Register SSE channel        │              │             │             │
-  │                  │               │             ├─consume─────►│             │             │
-  │                  │               │             │        generate tokens      │             │
-  │                  │               │             │◄─publish token─────────────             │             │
-  │                  │◄─Route token──────────────────  chat.responses            │             │
-  │◄─ SSE token ─────┤               │             │              │             │             │
-  │        ...       │               │             │              │             │             │
-  │◄─ SSE [DONE] ────┤               │             │              │             │             │
-  │                  │               │             │              │             │             │
-  │══════════════ LƯU VÀO DB ════════════════════════════════════════════════════════════│
-  │                  │               │             │              │             │             │
-  │                  │               │◄─SaveMessage┤              │             │             │
-  │                  │               │  user+reply │              │             │             │
-  │                  │               │             │◄─publish─────┤             │             │
-  │                  │               │             │  chat.completed             │             │
-  │                  │               │             ├─consume──────────────────►│             │
-  │                  │               │◄─GetHistory─────────────────────────────┤             │
-  │                  │               │  (filter requestID)         │            ├─SaveMessage►│
-  │                  │               │             │              │             │   INSERT    │
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API
+    participant Redis
+    participant Kafka
+    participant Worker
+    participant Persistence
+    participant PostgreSQL
+
+    rect rgb(230, 240, 255)
+        note over Client,PostgreSQL: POST /chat
+        Client->>API: POST /chat {session_id, content}
+        API->>Redis: ClaimOwner SetNX(session_id, userID)
+        Redis-->>API: owned=true
+        API->>Kafka: publish chat.requests
+        API->>Redis: SetRequestOwner(request_id, userID)
+        API-->>Client: {request_id}
+    end
+
+    rect rgb(230, 255, 230)
+        note over Client,PostgreSQL: GET /chat/stream/:request_id
+        Client->>API: GET /chat/stream/:request_id
+        API->>Redis: GetRequestOwner(request_id)
+        Redis-->>API: userID
+        API->>API: Register SSE channel
+        Kafka->>Worker: consume chat.requests
+        loop each token
+            Worker->>Kafka: publish token → chat.responses
+            Kafka->>API: consume token
+            API-->>Client: SSE token
+        end
+        API-->>Client: SSE [DONE]
+    end
+
+    rect rgb(255, 240, 230)
+        note over Client,PostgreSQL: Lưu vào DB
+        Worker->>Redis: SaveMessage(user msg + full reply)
+        Worker->>Kafka: publish chat.completed
+        Kafka->>Persistence: consume chat.completed
+        Persistence->>Redis: GetHistory(session_id, filter by request_id)
+        Redis-->>Persistence: messages
+        Persistence->>PostgreSQL: SaveMessage (INSERT)
+    end
 ```
 
 ### Clean Architecture Rings
