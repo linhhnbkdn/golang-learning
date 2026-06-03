@@ -14,10 +14,11 @@ func NewSendMessage(publisher EventPublisher) *SendMessageUseCase {
 	return &SendMessageUseCase{publisher: publisher}
 }
 
-func (uc *SendMessageUseCase) Execute(ctx context.Context, sessionID, content string) (string, error) {
+func (uc *SendMessageUseCase) Execute(ctx context.Context, sessionID, content string, out SendMessageOutputPort) {
 	req := shared.NewChatRequest(sessionID, content)
 	if err := uc.publisher.PublishRequest(ctx, req); err != nil {
-		return "", err
+		out.PresentError(err)
+		return
 	}
-	return req.RequestID, nil
+	out.PresentRequestID(req.RequestID)
 }

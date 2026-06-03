@@ -40,3 +40,15 @@ type RequestOwnerStore interface {
 	SetRequestOwner(ctx context.Context, requestID, userID string) error
 	GetRequestOwner(ctx context.Context, requestID string) (string, error)
 }
+
+// Output ports — use cases call these to deliver results to the presenter.
+
+type SendMessageOutputPort interface {
+	PresentRequestID(requestID string)
+	PresentError(err error)
+}
+
+type GetHistoryOutputPort interface {
+	PresentMessages(messages []entity.Message)
+	PresentError(err error)
+}

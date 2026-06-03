@@ -2,8 +2,6 @@ package usecase
 
 import (
 	"context"
-
-	"golang-learning/internal/entity"
 )
 
 type GetHistoryUseCase struct {
@@ -14,6 +12,11 @@ func NewGetHistory(cache ConversationCache) *GetHistoryUseCase {
 	return &GetHistoryUseCase{cache: cache}
 }
 
-func (uc *GetHistoryUseCase) Execute(ctx context.Context, sessionID string) ([]entity.Message, error) {
-	return uc.cache.GetHistory(ctx, sessionID)
+func (uc *GetHistoryUseCase) Execute(ctx context.Context, sessionID string, out GetHistoryOutputPort) {
+	messages, err := uc.cache.GetHistory(ctx, sessionID)
+	if err != nil {
+		out.PresentError(err)
+		return
+	}
+	out.PresentMessages(messages)
 }

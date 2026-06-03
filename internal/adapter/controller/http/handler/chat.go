@@ -9,7 +9,7 @@ import (
 
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/adapter/controller/http/state"
-	"golang-learning/internal/entity"
+	httppresenter "golang-learning/internal/adapter/presenter/http"
 	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -83,25 +83,26 @@ func (h *ChatHandler) PostChat(c *gin.Context) {
 		return
 	}
 
-	requestID, err := h.sendMessage.Execute(ctx, body.SessionID, body.Content)
-	if err != nil {
-		h.log.Error("send message failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	p := &httppresenter.SendMessagePresenter{}
+	h.sendMessage.Execute(ctx, body.SessionID, body.Content, p)
+	if p.Err != nil {
+		h.log.Error("send message failed", zap.Error(p.Err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": p.Err.Error()})
 		return
 	}
 
-	if err := h.requestOwner.SetRequestOwner(ctx, requestID, userID); err != nil {
+	if err := h.requestOwner.SetRequestOwner(ctx, p.RequestID, userID); err != nil {
 		h.log.Error("set request owner failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
 	h.log.Info("chat request published",
-		zap.String("request_id", requestID),
+		zap.String("request_id", p.RequestID),
 		zap.String("session_id", body.SessionID),
 		zap.String("user_id", userID),
 	)
-	c.JSON(http.StatusOK, gin.H{"request_id": requestID})
+	c.JSON(http.StatusOK, gin.H{"request_id": p.RequestID})
 }
 
 func (h *ChatHandler) StreamResponse(c *gin.Context) {
@@ -172,13 +173,14 @@ func (h *ChatHandler) GetHistory(c *gin.Context) {
 	if h.guardSession(c, sessionID) {
 		return
 	}
-	messages, err := h.getHistory.Execute(c.Request.Context(), sessionID)
-	if err != nil {
-		h.log.Error("get history failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	p := &httppresenter.GetHistoryPresenter{}
+	h.getHistory.Execute(c.Request.Context(), sessionID, p)
+	if p.Err != nil {
+		h.log.Error("get history failed", zap.Error(p.Err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": p.Err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toResponse(messages))
+	c.JSON(http.StatusOK, p.Messages)
 }
 
 func (h *ChatHandler) GetHistoryDB(c *gin.Context) {
@@ -192,7 +194,9 @@ func (h *ChatHandler) GetHistoryDB(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toResponse(messages))
+	p := &httppresenter.GetHistoryPresenter{}
+	p.PresentMessages(messages)
+	c.JSON(http.StatusOK, p.Messages)
 }
 
 // guardSession returns true (and writes response) if user does not own the session.
@@ -213,16 +217,4 @@ func (h *ChatHandler) guardSession(c *gin.Context, sessionID string) bool {
 		return true
 	}
 	return false
-}
-
-func toResponse(messages []entity.Message) []map[string]string {
-	out := make([]map[string]string, 0, len(messages))
-	for _, m := range messages {
-		out = append(out, map[string]string{
-			"role":       string(m.Role),
-			"content":    m.Content,
-			"request_id": m.RequestID,
-		})
-	}
-	return out
 }
