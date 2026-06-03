@@ -28,7 +28,8 @@ func NewEventPublisher(cfg config.Config) *EventPublisherImpl {
 			Balancer:     &kafka.LeastBytes{},
 			BatchTimeout: 10 * time.Millisecond,
 			BatchSize:    500,
-			Async:        true, // non-blocking publish — tăng throughput
+			Async:        true,
+			Compression:  kafka.Lz4, // giảm I/O ~50-60%, CPU trade-off nhỏ
 		},
 	}
 }
