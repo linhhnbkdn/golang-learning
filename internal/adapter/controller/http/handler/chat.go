@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"golang-learning/internal/adapter/http/middleware"
-	"golang-learning/internal/adapter/http/state"
+	"golang-learning/internal/adapter/controller/http/middleware"
+	"golang-learning/internal/adapter/controller/http/state"
 	"golang-learning/internal/domain"
 	"golang-learning/internal/usecase"
 

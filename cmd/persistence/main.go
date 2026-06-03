@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"golang-learning/config"
-	"golang-learning/internal/adapter/consumer"
-	"golang-learning/internal/adapter/repository/postgres"
-	redisrepo "golang-learning/internal/adapter/repository/redis"
+	"golang-learning/internal/adapter/controller/consumer"
+	"golang-learning/internal/adapter/gateway/postgres"
+	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 
@@ -26,10 +26,10 @@ func main() {
 			logger.New,
 			newRedisClient,
 			newPostgresPool,
-			redisrepo.NewConversationCache,
+			redisgateway.NewConversationCache,
 			postgres.NewMessageStore,
-			func(c *redisrepo.ConversationCache) usecase.ConversationCache { return c },
-			func(s *postgres.MessageStore) usecase.MessageStore            { return s },
+			func(c *redisgateway.ConversationCache) usecase.ConversationCache { return c },
+			func(s *postgres.MessageStore) usecase.MessageStore               { return s },
 			usecase.NewPersistSession,
 			consumer.NewPersistenceWorker,
 		),

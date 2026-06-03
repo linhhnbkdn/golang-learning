@@ -5,13 +5,13 @@ import (
 	"net/http"
 
 	"golang-learning/config"
-	"golang-learning/internal/adapter/consumer"
-	"golang-learning/internal/adapter/event"
-	handler "golang-learning/internal/adapter/http/handler"
-	"golang-learning/internal/adapter/http/middleware"
-	"golang-learning/internal/adapter/http/state"
-	"golang-learning/internal/adapter/repository/postgres"
-	redisrepo "golang-learning/internal/adapter/repository/redis"
+	"golang-learning/internal/adapter/controller/consumer"
+	"golang-learning/internal/adapter/controller/http/handler"
+	"golang-learning/internal/adapter/controller/http/middleware"
+	"golang-learning/internal/adapter/controller/http/state"
+	"golang-learning/internal/adapter/gateway/event"
+	"golang-learning/internal/adapter/gateway/postgres"
+	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 
@@ -35,8 +35,8 @@ func main() {
 			newPostgresPool,
 			newSSEState,
 			event.NewEventPublisher,
-			redisrepo.NewConversationCache,
-			redisrepo.NewSessionOwnerStore,
+			redisgateway.NewConversationCache,
+			redisgateway.NewSessionOwnerStore,
 			postgres.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
@@ -51,11 +51,10 @@ func main() {
 	).Run()
 }
 
-// interface adapters — fx needs explicit wiring for concrete → interface
-func asConversationCache(c *redisrepo.ConversationCache) usecase.ConversationCache { return c }
-func asSessionOwnerStore(s *redisrepo.SessionOwnerStore) usecase.SessionOwnerStore { return s }
-func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                 { return s }
-func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher              { return p }
+func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache { return c }
+func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore { return s }
+func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                    { return s }
+func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                 { return p }
 
 func newRedisClient(cfg config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
