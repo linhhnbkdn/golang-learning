@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"golang-learning/config"
-	"golang-learning/internal/adapter/controller/consumer"
-	"golang-learning/internal/adapter/gateway/event"
-	"golang-learning/internal/adapter/gateway/llm"
-	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	"golang-learning/internal/controller/consumer"
+	"golang-learning/internal/framework/llm"
+	"golang-learning/internal/gateway/event"
+	redisgateway "golang-learning/internal/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 
@@ -42,7 +43,12 @@ func newRedisClient(cfg config.Config) *redis.Client {
 }
 
 func newTokenGenerator(cfg config.Config) (usecase.TokenGenerator, error) {
-	return llm.NewTokenGenerator(cfg.LLMProvider)
+	switch cfg.LLMProvider {
+	case "mock", "":
+		return &llm.MockLLMStrategy{}, nil
+	default:
+		return nil, fmt.Errorf("unknown LLM provider: %s", cfg.LLMProvider)
+	}
 }
 
 func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {

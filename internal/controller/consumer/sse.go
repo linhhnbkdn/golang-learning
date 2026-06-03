@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"golang-learning/internal/adapter/controller/http/state"
+	"golang-learning/internal/controller/http/state"
 	"golang-learning/shared"
 
 	kafka "github.com/segmentio/kafka-go"

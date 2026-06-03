@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"golang-learning/config"
-	"golang-learning/internal/adapter/controller/consumer"
-	"golang-learning/internal/adapter/gateway/postgres"
-	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	"golang-learning/internal/controller/consumer"
+	"golang-learning/internal/gateway/postgres"
+	redisgateway "golang-learning/internal/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 

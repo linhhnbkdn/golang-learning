@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"golang-learning/internal/adapter/controller/http/middleware"
-	"golang-learning/internal/adapter/controller/http/state"
+	"golang-learning/internal/controller/http/middleware"
+	"golang-learning/internal/controller/http/state"
 	"golang-learning/internal/domain"
 	"golang-learning/internal/usecase"
 
@@ -18,13 +18,13 @@ import (
 )
 
 type ChatHandler struct {
-	sendMessage    *usecase.SendMessageUseCase
-	getHistory     *usecase.GetHistoryUseCase
-	store          usecase.MessageStore
-	ownerStore     usecase.SessionOwnerStore
-	requestOwner   usecase.RequestOwnerStore
-	sseState       *state.SSEState
-	log            *zap.Logger
+	sendMessage  *usecase.SendMessageUseCase
+	getHistory   *usecase.GetHistoryUseCase
+	store        usecase.MessageStore
+	ownerStore   usecase.SessionOwnerStore
+	requestOwner usecase.RequestOwnerStore
+	sseState     *state.SSEState
+	log          *zap.Logger
 }
 
 func NewChatHandler(
