@@ -37,9 +37,11 @@ func main() {
 			event.NewEventPublisher,
 			redisgateway.NewConversationCache,
 			redisgateway.NewSessionOwnerStore,
+			redisgateway.NewRequestOwnerStore,
 			postgres.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
+			asRequestOwnerStore,
 			asMessageStore,
 			asEventPublisher,
 			usecase.NewSendMessage,
@@ -51,10 +53,11 @@ func main() {
 	).Run()
 }
 
-func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache { return c }
-func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore { return s }
-func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                    { return s }
-func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                 { return p }
+func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache   { return c }
+func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore   { return s }
+func asRequestOwnerStore(r *redisgateway.RequestOwnerStore) usecase.RequestOwnerStore   { return r }
+func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                      { return s }
+func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                   { return p }
 
 func newRedisClient(cfg config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})

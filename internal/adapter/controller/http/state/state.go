@@ -10,10 +10,15 @@ type SSEState struct {
 	queues sync.Map // map[requestID]chan shared.ChatResponse
 }
 
-func (s *SSEState) Register(requestID string) chan shared.ChatResponse {
+// Register returns a channel and true if successfully registered.
+// Returns nil, false if requestID is already registered (prevents hijacking).
+func (s *SSEState) Register(requestID string) (chan shared.ChatResponse, bool) {
 	ch := make(chan shared.ChatResponse, 100)
-	s.queues.Store(requestID, ch)
-	return ch
+	_, loaded := s.queues.LoadOrStore(requestID, ch)
+	if loaded {
+		return nil, false
+	}
+	return ch, true
 }
 
 func (s *SSEState) Route(resp shared.ChatResponse) {

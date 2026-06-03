@@ -18,12 +18,13 @@ import (
 )
 
 type ChatHandler struct {
-	sendMessage *usecase.SendMessageUseCase
-	getHistory  *usecase.GetHistoryUseCase
-	store       usecase.MessageStore
-	ownerStore  usecase.SessionOwnerStore
-	sseState    *state.SSEState
-	log         *zap.Logger
+	sendMessage    *usecase.SendMessageUseCase
+	getHistory     *usecase.GetHistoryUseCase
+	store          usecase.MessageStore
+	ownerStore     usecase.SessionOwnerStore
+	requestOwner   usecase.RequestOwnerStore
+	sseState       *state.SSEState
+	log            *zap.Logger
 }
 
 func NewChatHandler(
@@ -31,16 +32,18 @@ func NewChatHandler(
 	getHistory *usecase.GetHistoryUseCase,
 	store usecase.MessageStore,
 	ownerStore usecase.SessionOwnerStore,
+	requestOwner usecase.RequestOwnerStore,
 	sseState *state.SSEState,
 	log *zap.Logger,
 ) *ChatHandler {
 	return &ChatHandler{
-		sendMessage: sendMessage,
-		getHistory:  getHistory,
-		store:       store,
-		ownerStore:  ownerStore,
-		sseState:    sseState,
-		log:         log,
+		sendMessage:  sendMessage,
+		getHistory:   getHistory,
+		store:        store,
+		ownerStore:   ownerStore,
+		requestOwner: requestOwner,
+		sseState:     sseState,
+		log:          log,
 	}
 }
 
@@ -87,6 +90,12 @@ func (h *ChatHandler) PostChat(c *gin.Context) {
 		return
 	}
 
+	if err := h.requestOwner.SetRequestOwner(ctx, requestID, userID); err != nil {
+		h.log.Error("set request owner failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
 	h.log.Info("chat request published",
 		zap.String("request_id", requestID),
 		zap.String("session_id", body.SessionID),
@@ -97,7 +106,24 @@ func (h *ChatHandler) PostChat(c *gin.Context) {
 
 func (h *ChatHandler) StreamResponse(c *gin.Context) {
 	requestID := c.Param("request_id")
-	ch := h.sseState.Register(requestID)
+	userID := c.GetString(middleware.UserIDKey)
+	ctx := c.Request.Context()
+
+	owner, err := h.requestOwner.GetRequestOwner(ctx, requestID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	if owner != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	ch, ok := h.sseState.Register(requestID)
+	if !ok {
+		c.JSON(http.StatusConflict, gin.H{"error": "stream already connected"})
+		return
+	}
 	defer h.sseState.Unregister(requestID)
 
 	c.Header("Content-Type", "text/event-stream")

@@ -35,3 +35,8 @@ type SessionOwnerStore interface {
 	ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error)
 	GetOwner(ctx context.Context, sessionID string) (string, error)
 }
+
+type RequestOwnerStore interface {
+	SetRequestOwner(ctx context.Context, requestID, userID string) error
+	GetRequestOwner(ctx context.Context, requestID string) (string, error)
+}
