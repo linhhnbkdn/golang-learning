@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"golang-learning/config"
-	"golang-learning/internal/controller/consumer"
+	"golang-learning/internal/adapter/controller/consumer"
+	"golang-learning/internal/adapter/gateway/event"
+	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/framework/llm"
-	"golang-learning/internal/gateway/event"
-	redisgateway "golang-learning/internal/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 

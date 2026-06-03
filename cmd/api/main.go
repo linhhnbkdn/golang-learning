@@ -5,13 +5,13 @@ import (
 	"net/http"
 
 	"golang-learning/config"
-	"golang-learning/internal/controller/consumer"
-	"golang-learning/internal/controller/http/handler"
-	"golang-learning/internal/controller/http/middleware"
-	"golang-learning/internal/controller/http/state"
-	"golang-learning/internal/gateway/event"
-	"golang-learning/internal/gateway/postgres"
-	redisgateway "golang-learning/internal/gateway/redis"
+	"golang-learning/internal/adapter/controller/consumer"
+	"golang-learning/internal/adapter/controller/http/handler"
+	"golang-learning/internal/adapter/controller/http/middleware"
+	"golang-learning/internal/adapter/controller/http/state"
+	"golang-learning/internal/adapter/gateway/event"
+	"golang-learning/internal/adapter/gateway/postgres"
+	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/logger"
 	"golang-learning/internal/usecase"
 
@@ -53,11 +53,11 @@ func main() {
 	).Run()
 }
 
-func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache   { return c }
-func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore   { return s }
-func asRequestOwnerStore(r *redisgateway.RequestOwnerStore) usecase.RequestOwnerStore   { return r }
-func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                      { return s }
-func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                   { return p }
+func asConversationCache(c *redisgateway.ConversationCache) usecase.ConversationCache { return c }
+func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwnerStore { return s }
+func asRequestOwnerStore(r *redisgateway.RequestOwnerStore) usecase.RequestOwnerStore { return r }
+func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                    { return s }
+func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                 { return p }
 
 func newRedisClient(cfg config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
