@@ -9,11 +9,11 @@ import (
 	"golang-learning/internal/adapter/gateway/event"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/framework/llm"
+	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -25,7 +25,7 @@ func main() {
 		fx.Provide(
 			config.Load,
 			logger.New,
-			newRedisClient,
+			frameworkredis.NewClient,
 			newTokenGenerator,
 			event.NewEventPublisher,
 			redisgateway.NewConversationCache,
@@ -36,10 +36,6 @@ func main() {
 		),
 		fx.Invoke(runWorker),
 	).Run()
-}
-
-func newRedisClient(cfg config.Config) *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
 }
 
 func newTokenGenerator(cfg config.Config) (usecase.TokenGenerator, error) {
@@ -67,11 +63,4 @@ func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
 			return nil
 		},
 	})
-}
-
-func parseRedisAddr(url string) string {
-	if len(url) > 8 && url[:8] == "redis://" {
-		return url[8:]
-	}
-	return url
 }

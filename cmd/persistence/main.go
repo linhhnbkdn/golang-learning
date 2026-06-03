@@ -7,12 +7,12 @@ import (
 	"golang-learning/internal/adapter/controller/consumer"
 	"golang-learning/internal/adapter/gateway/postgres"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	frameworkpostgres "golang-learning/internal/framework/postgres"
+	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -24,8 +24,8 @@ func main() {
 		fx.Provide(
 			config.Load,
 			logger.New,
-			newRedisClient,
-			newPostgresPool,
+			frameworkredis.NewClient,
+			frameworkpostgres.NewPool,
 			redisgateway.NewConversationCache,
 			postgres.NewMessageStore,
 			func(c *redisgateway.ConversationCache) usecase.ConversationCache { return c },
@@ -35,21 +35,6 @@ func main() {
 		),
 		fx.Invoke(runPersistence),
 	).Run()
-}
-
-func newRedisClient(cfg config.Config) *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
-}
-
-func newPostgresPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
-	if err != nil {
-		return nil, err
-	}
-	lc.Append(fx.Hook{
-		OnStop: func(_ context.Context) error { pool.Close(); return nil },
-	})
-	return pool, nil
 }
 
 func runPersistence(lc fx.Lifecycle, w *consumer.PersistenceWorker, log *zap.Logger) {
@@ -68,11 +53,4 @@ func runPersistence(lc fx.Lifecycle, w *consumer.PersistenceWorker, log *zap.Log
 			return nil
 		},
 	})
-}
-
-func parseRedisAddr(url string) string {
-	if len(url) > 8 && url[:8] == "redis://" {
-		return url[8:]
-	}
-	return url
 }

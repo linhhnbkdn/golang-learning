@@ -12,13 +12,13 @@ import (
 	"golang-learning/internal/adapter/gateway/event"
 	"golang-learning/internal/adapter/gateway/postgres"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
+	frameworkpostgres "golang-learning/internal/framework/postgres"
+	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	kafka "github.com/segmentio/kafka-go"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -31,8 +31,8 @@ func main() {
 		fx.Provide(
 			config.Load,
 			logger.New,
-			newRedisClient,
-			newPostgresPool,
+			frameworkredis.NewClient,
+			frameworkpostgres.NewPool,
 			newSSEState,
 			event.NewEventPublisher,
 			redisgateway.NewConversationCache,
@@ -58,21 +58,6 @@ func asSessionOwnerStore(s *redisgateway.SessionOwnerStore) usecase.SessionOwner
 func asRequestOwnerStore(r *redisgateway.RequestOwnerStore) usecase.RequestOwnerStore { return r }
 func asMessageStore(s *postgres.MessageStore) usecase.MessageStore                    { return s }
 func asEventPublisher(p *event.EventPublisher) usecase.EventPublisher                 { return p }
-
-func newRedisClient(cfg config.Config) *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: parseRedisAddr(cfg.RedisURL)})
-}
-
-func newPostgresPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
-	if err != nil {
-		return nil, err
-	}
-	lc.Append(fx.Hook{
-		OnStop: func(_ context.Context) error { pool.Close(); return nil },
-	})
-	return pool, nil
-}
 
 func newSSEState() *state.SSEState { return &state.SSEState{} }
 
@@ -112,11 +97,4 @@ func startServer(lc fx.Lifecycle, h *handler.ChatHandler, cfg config.Config, log
 			return srv.Shutdown(ctx)
 		},
 	})
-}
-
-func parseRedisAddr(url string) string {
-	if len(url) > 8 && url[:8] == "redis://" {
-		return url[8:]
-	}
-	return url
 }
