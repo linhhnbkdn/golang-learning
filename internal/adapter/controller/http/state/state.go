@@ -7,26 +7,51 @@ import (
 )
 
 type SSEState struct {
-	queues sync.Map // map[requestID]chan shared.ChatResponse
+	mu      sync.Mutex
+	queues  map[string]chan shared.ChatResponse
+	pending map[string][]shared.ChatResponse
 }
 
-// Register returns a channel and true if successfully registered.
-// Returns nil, false if requestID is already registered (prevents hijacking).
+func NewSSEState() *SSEState {
+	return &SSEState{
+		queues:  make(map[string]chan shared.ChatResponse),
+		pending: make(map[string][]shared.ChatResponse),
+	}
+}
+
+// Register returns a channel for the requestID.
+// Drains any tokens buffered before client connected.
+// Returns nil, false if already registered (prevents hijacking).
 func (s *SSEState) Register(requestID string) (chan shared.ChatResponse, bool) {
-	ch := make(chan shared.ChatResponse, 100)
-	_, loaded := s.queues.LoadOrStore(requestID, ch)
-	if loaded {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.queues[requestID]; exists {
 		return nil, false
 	}
+	ch := make(chan shared.ChatResponse, 100)
+	s.queues[requestID] = ch
+
+	for _, msg := range s.pending[requestID] {
+		ch <- msg
+	}
+	delete(s.pending, requestID)
+
 	return ch, true
 }
 
+// Route sends a token to the client channel.
+// If client has not connected yet, buffers the token.
 func (s *SSEState) Route(resp shared.ChatResponse) {
-	v, ok := s.queues.Load(resp.RequestID)
+	s.mu.Lock()
+	ch, ok := s.queues[resp.RequestID]
 	if !ok {
+		s.pending[resp.RequestID] = append(s.pending[resp.RequestID], resp)
+		s.mu.Unlock()
 		return
 	}
-	ch := v.(chan shared.ChatResponse)
+	s.mu.Unlock()
+
 	select {
 	case ch <- resp:
 	default:
@@ -34,7 +59,12 @@ func (s *SSEState) Route(resp shared.ChatResponse) {
 }
 
 func (s *SSEState) Unregister(requestID string) {
-	if v, ok := s.queues.LoadAndDelete(requestID); ok {
-		close(v.(chan shared.ChatResponse))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if ch, ok := s.queues[requestID]; ok {
+		close(ch)
+		delete(s.queues, requestID)
 	}
+	delete(s.pending, requestID)
 }

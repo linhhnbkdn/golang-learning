@@ -59,7 +59,7 @@ func asRequestOwnerStore(r *cache.RequestOwnerStoreImpl) usecase.IRequestOwnerSt
 func asMessageStore(s *store.MessageStoreImpl) usecase.IMessageStore                { return s }
 func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher         { return p }
 
-func newSSEState() *state.SSEState { return &state.SSEState{} }
+func newSSEState() *state.SSEState { return state.NewSSEState() }
 
 func startResponseConsumer(lc fx.Lifecycle, cfg config.Config, s *state.SSEState, log *zap.Logger) {
 	r := kafka.NewReader(kafka.ReaderConfig{
