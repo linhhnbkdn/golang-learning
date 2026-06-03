@@ -2,25 +2,25 @@ package postgres
 
 import (
 	"context"
-	"strings"
 
 	"golang-learning/config"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
+	gormpg "gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-func NewPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+func NewDB(lc fx.Lifecycle, cfg config.Config) (*gorm.DB, error) {
+	db, err := gorm.Open(gormpg.Open(cfg.DatabaseURL), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
 	lc.Append(fx.Hook{
-		OnStop: func(_ context.Context) error { pool.Close(); return nil },
+		OnStop: func(_ context.Context) error { return sqlDB.Close() },
 	})
-	return pool, nil
-}
-
-func ParseAddr(url string) string {
-	return strings.TrimPrefix(url, "postgresql://")
+	return db, nil
 }

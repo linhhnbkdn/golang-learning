@@ -5,54 +5,50 @@ import (
 
 	"golang-learning/internal/entity"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MessageStore struct {
-	pool *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewMessageStore(pool *pgxpool.Pool) *MessageStore {
-	return &MessageStore{pool: pool}
+func NewMessageStore(db *gorm.DB) *MessageStore {
+	return &MessageStore{db: db}
 }
 
 func (s *MessageStore) SaveMessage(ctx context.Context, msg entity.Message) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO sessions (session_id) VALUES ($1) ON CONFLICT DO NOTHING`,
-		msg.SessionID,
-	)
-	if err != nil {
+	session := SessionModel{SessionID: msg.SessionID}
+	if err := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&session).Error; err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx,
-		`INSERT INTO messages (session_id, request_id, role, content) VALUES ($1, $2, $3, $4)`,
-		msg.SessionID, msg.RequestID, string(msg.Role), msg.Content,
-	)
-	return err
+	message := MessageModel{
+		SessionID: msg.SessionID,
+		RequestID: msg.RequestID,
+		Role:      string(msg.Role),
+		Content:   msg.Content,
+	}
+	return s.db.WithContext(ctx).Create(&message).Error
 }
 
 func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT request_id, role, content FROM messages WHERE session_id = $1 ORDER BY id ASC`,
-		sessionID,
-	)
-	if err != nil {
+	var rows []MessageModel
+	if err := s.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("id asc").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var messages []entity.Message
-	for rows.Next() {
-		var requestID, role, content string
-		if err := rows.Scan(&requestID, &role, &content); err != nil {
-			return nil, err
-		}
-		messages = append(messages, entity.Message{
+	messages := make([]entity.Message, len(rows))
+	for i, r := range rows {
+		messages[i] = entity.Message{
 			SessionID: sessionID,
-			RequestID: requestID,
-			Role:      entity.MessageRole(role),
-			Content:   content,
-		})
+			RequestID: r.RequestID,
+			Role:      entity.MessageRole(r.Role),
+			Content:   r.Content,
+		}
 	}
-	return messages, rows.Err()
+	return messages, nil
 }

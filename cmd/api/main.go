@@ -32,7 +32,7 @@ func main() {
 			config.Load,
 			logger.New,
 			frameworkredis.NewClient,
-			frameworkpostgres.NewPool,
+			frameworkpostgres.NewDB,
 			newSSEState,
 			event.NewEventPublisher,
 			redisgateway.NewConversationCache,

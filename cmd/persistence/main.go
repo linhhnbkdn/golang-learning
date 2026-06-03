@@ -25,7 +25,7 @@ func main() {
 			config.Load,
 			logger.New,
 			frameworkredis.NewClient,
-			frameworkpostgres.NewPool,
+			frameworkpostgres.NewDB,
 			redisgateway.NewConversationCache,
 			postgres.NewMessageStore,
 			func(c *redisgateway.ConversationCache) usecase.ConversationCache { return c },
