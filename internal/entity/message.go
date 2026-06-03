@@ -13,7 +13,3 @@ type Message struct {
 	Role      MessageRole
 	Content   string
 }
-
-type Session struct {
-	SessionID string
-}
