@@ -94,5 +94,18 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  locust:
+    image: locustio/locust
+    profiles: ["benchmark"]
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py
+    command: -f /mnt/locust/locustfile.py --host http://api:8000
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-secret}
+    depends_on:
+      - api
+
 volumes:
   postgres_data:

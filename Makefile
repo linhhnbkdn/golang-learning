@@ -5,7 +5,8 @@ PORT    ?= 8000
 
 .PHONY: up down migrate api worker persistence chat history history-db build token \
         run-api run-worker run-persistence \
-        prod-up prod-down prod-migrate prod-chat
+        prod-up prod-down prod-migrate prod-chat \
+        benchmark
 
 # ── Dev ──────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,10 @@ prod-down:
 prod-migrate:
 	docker compose -f docker-compose.prod.yml run --rm \
 		-e SERVICE=migrate api /app/service
+
+benchmark:
+	docker compose -f docker-compose.prod.yml --profile benchmark up -d locust
+	@echo "Locust UI: http://localhost:8089"
 
 prod-chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
