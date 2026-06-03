@@ -6,6 +6,10 @@ services:
       args:
         SERVICE: api
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+      REDIS_URL: redis://redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "${PORT:-8000}:8000"
     depends_on:
@@ -21,6 +25,9 @@ services:
       args:
         SERVICE: worker
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       - kafka
       - redis
@@ -33,11 +40,28 @@ services:
       args:
         SERVICE: persistence
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+      REDIS_URL: redis://redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       - kafka
       - redis
       - postgres
     restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+    depends_on:
+      - postgres
+    restart: "no"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
