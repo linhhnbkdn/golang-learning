@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"golang-learning/config"
 	"golang-learning/shared"
@@ -23,8 +24,9 @@ type EventPublisherImpl struct {
 func NewEventPublisher(cfg config.Config) *EventPublisherImpl {
 	return &EventPublisherImpl{
 		writer: &kafka.Writer{
-			Addr:     kafka.TCP(cfg.KafkaBrokers...),
-			Balancer: &kafka.LeastBytes{},
+			Addr:         kafka.TCP(cfg.KafkaBrokers...),
+			Balancer:     &kafka.LeastBytes{},
+			BatchTimeout: 10 * time.Millisecond,
 		},
 	}
 }

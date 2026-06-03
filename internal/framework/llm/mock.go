@@ -33,7 +33,7 @@ func (m *MockLLMStrategy) Generate(ctx context.Context, content string) (<-chan 
 			case <-ctx.Done():
 				return
 			}
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 		}
 	}()
 	return ch, nil
