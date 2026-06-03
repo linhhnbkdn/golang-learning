@@ -13,7 +13,6 @@ import (
 
 const (
 	topicRequests  = "chat.requests"
-	topicResponses = "chat.responses"
 	topicCompleted = "chat.completed"
 )
 
@@ -38,15 +37,9 @@ func (p *EventPublisherImpl) PublishRequest(ctx context.Context, req shared.Chat
 	return p.write(ctx, topicRequests, req)
 }
 
-func (p *EventPublisherImpl) PublishResponse(ctx context.Context, resp shared.ChatResponse) error {
-	return p.write(ctx, topicResponses, resp)
-}
-
 func (p *EventPublisherImpl) PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error {
 	return p.write(ctx, topicCompleted, completed)
 }
-
-func (p *EventPublisherImpl) Flush() {}
 
 func (p *EventPublisherImpl) Close() error {
 	return p.writer.Close()

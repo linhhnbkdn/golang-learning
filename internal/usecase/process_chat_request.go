@@ -8,21 +8,25 @@ import (
 	"golang-learning/shared"
 )
 
+
 type ProcessChatRequestUseCase struct {
 	generator ITokenGenerator
 	publisher IEventPublisher
 	cache     IConversationCache
+	sseStream ISSEStream
 }
 
 func NewProcessChatRequest(
 	generator ITokenGenerator,
 	publisher IEventPublisher,
 	cache IConversationCache,
+	sseStream ISSEStream,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
 		generator: generator,
 		publisher: publisher,
 		cache:     cache,
+		sseStream: sseStream,
 	}
 }
 
@@ -31,7 +35,6 @@ func (uc *ProcessChatRequestUseCase) Execute(ctx context.Context, req shared.Cha
 	if err != nil {
 		return err
 	}
-	uc.publisher.Flush()
 
 	if err := uc.cacheMessages(ctx, req, fullResponse); err != nil {
 		return err
@@ -52,26 +55,12 @@ func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req share
 	var sb strings.Builder
 	for token := range tokenCh {
 		sb.WriteString(token)
-		if err := uc.publisher.PublishResponse(ctx, shared.ChatResponse{
-			RequestID: req.RequestID,
-			SessionID: req.SessionID,
-			Delta:     token,
-		}); err != nil {
+		if err := uc.sseStream.Publish(ctx, req.RequestID, token); err != nil {
 			return "", err
 		}
 	}
 
-	stop := "stop"
-	if err := uc.publisher.PublishResponse(ctx, shared.ChatResponse{
-		RequestID:    req.RequestID,
-		SessionID:    req.SessionID,
-		Delta:        "",
-		FinishReason: &stop,
-	}); err != nil {
-		return "", err
-	}
-
-	return sb.String(), nil
+	return sb.String(), uc.sseStream.PublishDone(ctx, req.RequestID)
 }
 
 func (uc *ProcessChatRequestUseCase) cacheMessages(ctx context.Context, req shared.ChatRequest, fullResponse string) error {

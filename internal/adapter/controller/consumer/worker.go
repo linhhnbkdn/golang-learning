@@ -23,7 +23,7 @@ type Worker struct {
 func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *Worker {
 	return &Worker{
 		useCase:     useCase,
-		concurrency: runtime.NumCPU() * 4,
+		concurrency: runtime.NumCPU() * 50,
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "llm-worker",
@@ -42,13 +42,18 @@ func (w *Worker) Run(ctx context.Context) error {
 	sem := make(chan struct{}, w.concurrency)
 
 	for {
-		msg, err := w.reader.ReadMessage(ctx)
+		msg, err := w.reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
 			slog.Error("worker read error", "err", err)
 			continue
+		}
+
+		// Commit offset ngay — không retry nếu LLM call thất bại
+		if err := w.reader.CommitMessages(ctx, msg); err != nil {
+			slog.Error("worker commit error", "err", err)
 		}
 
 		var req shared.ChatRequest

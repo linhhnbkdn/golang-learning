@@ -14,9 +14,19 @@ type IConversationCache interface {
 
 type IEventPublisher interface {
 	PublishRequest(ctx context.Context, req shared.ChatRequest) error
-	PublishResponse(ctx context.Context, resp shared.ChatResponse) error
 	PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error
-	Flush()
+}
+
+type SSEToken struct {
+	ID    string
+	Delta string
+	Done  bool
+}
+
+type ISSEStream interface {
+	Publish(ctx context.Context, requestID, delta string) error
+	PublishDone(ctx context.Context, requestID string) error
+	Read(ctx context.Context, requestID, lastID string) ([]SSEToken, error)
 }
 
 type IMessageStore interface {

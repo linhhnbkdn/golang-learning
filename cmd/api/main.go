@@ -5,10 +5,8 @@ import (
 	"net/http"
 
 	"golang-learning/config"
-	"golang-learning/internal/adapter/controller/consumer"
 	"golang-learning/internal/adapter/controller/http/handler"
 	"golang-learning/internal/adapter/controller/http/middleware"
-	"golang-learning/internal/adapter/controller/http/state"
 	"golang-learning/internal/adapter/gateway/broker"
 	"golang-learning/internal/adapter/gateway/cache"
 	"golang-learning/internal/adapter/gateway/store"
@@ -19,7 +17,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	kafka "github.com/segmentio/kafka-go"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -33,22 +30,22 @@ func main() {
 			logger.New,
 			frameworkredis.NewClient,
 			frameworkpostgres.NewDB,
-			newSSEState,
 			broker.NewEventPublisher,
 			cache.NewConversationCache,
 			cache.NewSessionOwnerStore,
 			cache.NewRequestOwnerStore,
+			cache.NewSSEStream,
 			store.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
 			asRequestOwnerStore,
 			asMessageStore,
 			asEventPublisher,
+			asSSEStream,
 			usecase.NewSendMessage,
 			usecase.NewGetHistory,
 			handler.NewChatHandler,
 		),
-		fx.Invoke(startResponseConsumer),
 		fx.Invoke(startServer),
 	).Run()
 }
@@ -58,29 +55,7 @@ func asSessionOwnerStore(s *cache.SessionOwnerStoreImpl) usecase.ISessionOwnerSt
 func asRequestOwnerStore(r *cache.RequestOwnerStoreImpl) usecase.IRequestOwnerStore { return r }
 func asMessageStore(s *store.MessageStoreImpl) usecase.IMessageStore                { return s }
 func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher         { return p }
-
-func newSSEState() *state.SSEState { return state.NewSSEState() }
-
-func startResponseConsumer(lc fx.Lifecycle, cfg config.Config, s *state.SSEState, log *zap.Logger) {
-	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  cfg.KafkaBrokers,
-		GroupID:  "api-sse-fan-out",
-		Topic:    "chat.responses",
-		MinBytes: 1,
-		MaxBytes: 10e6,
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	lc.Append(fx.Hook{
-		OnStart: func(_ context.Context) error {
-			go consumer.ConsumeResponses(ctx, r, s, log)
-			return nil
-		},
-		OnStop: func(_ context.Context) error {
-			cancel()
-			return r.Close()
-		},
-	})
-}
+func asSSEStream(s *cache.SSEStreamImpl) usecase.ISSEStream                         { return s }
 
 func startServer(lc fx.Lifecycle, h *handler.ChatHandler, cfg config.Config, log *zap.Logger) {
 	r := gin.Default()

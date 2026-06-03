@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"golang-learning/internal/adapter/controller/http/middleware"
-	"golang-learning/internal/adapter/controller/http/state"
 	httppresenter "golang-learning/internal/adapter/presenter/http"
 	"golang-learning/internal/usecase"
 
@@ -23,7 +21,7 @@ type ChatHandler struct {
 	store        usecase.IMessageStore
 	ownerStore   usecase.ISessionOwnerStore
 	requestOwner usecase.IRequestOwnerStore
-	sseState     *state.SSEState
+	sseStream    usecase.ISSEStream
 	log          *zap.Logger
 }
 
@@ -33,7 +31,7 @@ func NewChatHandler(
 	store usecase.IMessageStore,
 	ownerStore usecase.ISessionOwnerStore,
 	requestOwner usecase.IRequestOwnerStore,
-	sseState *state.SSEState,
+	sseStream usecase.ISSEStream,
 	log *zap.Logger,
 ) *ChatHandler {
 	return &ChatHandler{
@@ -42,7 +40,7 @@ func NewChatHandler(
 		store:        store,
 		ownerStore:   ownerStore,
 		requestOwner: requestOwner,
-		sseState:     sseState,
+		sseStream:    sseStream,
 		log:          log,
 	}
 }
@@ -120,13 +118,6 @@ func (h *ChatHandler) StreamResponse(c *gin.Context) {
 		return
 	}
 
-	ch, ok := h.sseState.Register(requestID)
-	if !ok {
-		c.JSON(http.StatusConflict, gin.H{"error": "stream already connected"})
-		return
-	}
-	defer h.sseState.Unregister(requestID)
-
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -138,32 +129,31 @@ func (h *ChatHandler) StreamResponse(c *gin.Context) {
 		return
 	}
 
+	lastID := "0"
 	for {
-		select {
-		case resp, ok := <-ch:
-			if !ok {
-				return
-			}
-			if resp.FinishReason != nil && *resp.FinishReason == "stop" {
+		if ctx.Err() != nil {
+			return
+		}
+
+		tokens, err := h.sseStream.Read(ctx, requestID, lastID)
+		if err != nil {
+			return
+		}
+
+		for _, t := range tokens {
+			lastID = t.ID
+			if t.Done {
 				fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 				flusher.Flush()
 				return
 			}
 			payload, _ := json.Marshal(map[string]any{
 				"choices": []map[string]any{
-					{"delta": map[string]string{"content": resp.Delta}, "finish_reason": nil},
+					{"delta": map[string]string{"content": t.Delta}, "finish_reason": nil},
 				},
 			})
 			fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
 			flusher.Flush()
-
-		case <-time.After(30 * time.Second):
-			fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
-			flusher.Flush()
-			return
-
-		case <-c.Request.Context().Done():
-			return
 		}
 	}
 }
