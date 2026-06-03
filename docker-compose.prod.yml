@@ -32,6 +32,8 @@ services:
       - kafka
       - redis
     restart: unless-stopped
+    deploy:
+      replicas: 3
 
   persistence:
     build:
@@ -78,6 +80,7 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
     restart: unless-stopped
 
   redis:
@@ -92,6 +95,17 @@ services:
       POSTGRES_DB: chatdb
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
     restart: unless-stopped
 
   locust:
