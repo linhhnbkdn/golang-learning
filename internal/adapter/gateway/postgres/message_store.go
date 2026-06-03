@@ -21,16 +21,12 @@ func (s *MessageStore) SaveMessage(ctx context.Context, msg entity.Message) erro
 	session := SessionModel{SessionID: msg.SessionID}
 	if err := s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
+		Omit("Messages").
 		Create(&session).Error; err != nil {
 		return err
 	}
-	message := MessageModel{
-		SessionID: msg.SessionID,
-		RequestID: msg.RequestID,
-		Role:      string(msg.Role),
-		Content:   msg.Content,
-	}
-	return s.db.WithContext(ctx).Create(&message).Error
+	row := messageFromEntity(msg)
+	return s.db.WithContext(ctx).Omit("Session").Create(&row).Error
 }
 
 func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
@@ -43,12 +39,7 @@ func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]enti
 	}
 	messages := make([]entity.Message, len(rows))
 	for i, r := range rows {
-		messages[i] = entity.Message{
-			SessionID: sessionID,
-			RequestID: r.RequestID,
-			Role:      entity.MessageRole(r.Role),
-			Content:   r.Content,
-		}
+		messages[i] = r.ToEntity()
 	}
 	return messages, nil
 }
