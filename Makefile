@@ -25,10 +25,19 @@ persistence:
 	go run ./cmd/persistence/
 
 build:
-	go build -o bin/api         ./cmd/api/
-	go build -o bin/worker      ./cmd/worker/
-	go build -o bin/persistence ./cmd/persistence/
-	go build -o bin/migrate     ./cmd/migrate/
+	go build -o ./api         ./cmd/api/
+	go build -o ./worker      ./cmd/worker/
+	go build -o ./persistence ./cmd/persistence/
+	go build -o ./migrate     ./cmd/migrate/
+
+run-api: build
+	./api
+
+run-worker: build
+	./worker
+
+run-persistence: build
+	./persistence
 
 token:
 	@go run ./cmd/gentoken/ $(USER)
