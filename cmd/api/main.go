@@ -12,7 +12,7 @@ import (
 	"golang-learning/internal/adapter/gateway/event"
 	"golang-learning/internal/adapter/gateway/postgres"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
-	"golang-learning/internal/logger"
+	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"

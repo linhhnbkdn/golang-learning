@@ -9,7 +9,7 @@ import (
 	"golang-learning/internal/adapter/gateway/event"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
 	"golang-learning/internal/framework/llm"
-	"golang-learning/internal/logger"
+	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
 	"github.com/joho/godotenv"

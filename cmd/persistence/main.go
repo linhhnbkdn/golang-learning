@@ -7,7 +7,7 @@ import (
 	"golang-learning/internal/adapter/controller/consumer"
 	"golang-learning/internal/adapter/gateway/postgres"
 	redisgateway "golang-learning/internal/adapter/gateway/redis"
-	"golang-learning/internal/logger"
+	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
 	"github.com/jackc/pgx/v5/pgxpool"
