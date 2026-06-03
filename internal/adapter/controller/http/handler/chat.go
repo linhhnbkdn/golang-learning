@@ -9,7 +9,7 @@ import (
 
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/adapter/controller/http/state"
-	"golang-learning/internal/domain"
+	"golang-learning/internal/entity"
 	"golang-learning/internal/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -215,7 +215,7 @@ func (h *ChatHandler) guardSession(c *gin.Context, sessionID string) bool {
 	return false
 }
 
-func toResponse(messages []domain.Message) []map[string]string {
+func toResponse(messages []entity.Message) []map[string]string {
 	out := make([]map[string]string, 0, len(messages))
 	for _, m := range messages {
 		out = append(out, map[string]string{

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"golang-learning/internal/domain"
+	"golang-learning/internal/entity"
 	"golang-learning/shared"
 )
 
@@ -75,18 +75,18 @@ func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req share
 }
 
 func (uc *ProcessChatRequestUseCase) cacheMessages(ctx context.Context, req shared.ChatRequest, fullResponse string) error {
-	if err := uc.cache.SaveMessage(ctx, domain.Message{
+	if err := uc.cache.SaveMessage(ctx, entity.Message{
 		SessionID: req.SessionID,
 		RequestID: req.RequestID,
-		Role:      domain.RoleUser,
+		Role:      entity.RoleUser,
 		Content:   req.Content,
 	}); err != nil {
 		return err
 	}
-	return uc.cache.SaveMessage(ctx, domain.Message{
+	return uc.cache.SaveMessage(ctx, entity.Message{
 		SessionID: req.SessionID,
 		RequestID: req.RequestID,
-		Role:      domain.RoleAssistant,
+		Role:      entity.RoleAssistant,
 		Content:   fullResponse,
 	})
 }

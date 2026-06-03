@@ -3,13 +3,13 @@ package usecase
 import (
 	"context"
 
-	"golang-learning/internal/domain"
+	"golang-learning/internal/entity"
 	"golang-learning/shared"
 )
 
 type ConversationCache interface {
-	SaveMessage(ctx context.Context, msg domain.Message) error
-	GetHistory(ctx context.Context, sessionID string) ([]domain.Message, error)
+	SaveMessage(ctx context.Context, msg entity.Message) error
+	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
 }
 
 type EventPublisher interface {
@@ -20,8 +20,8 @@ type EventPublisher interface {
 }
 
 type MessageStore interface {
-	SaveMessage(ctx context.Context, msg domain.Message) error
-	GetHistory(ctx context.Context, sessionID string) ([]domain.Message, error)
+	SaveMessage(ctx context.Context, msg entity.Message) error
+	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
 }
 
 type TokenGenerator interface {

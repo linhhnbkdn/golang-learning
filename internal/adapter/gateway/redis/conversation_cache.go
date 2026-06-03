@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"golang-learning/config"
-	"golang-learning/internal/domain"
+	"golang-learning/internal/entity"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -30,7 +30,7 @@ type messageRecord struct {
 	RequestID string `json:"request_id"`
 }
 
-func (c *ConversationCache) SaveMessage(ctx context.Context, msg domain.Message) error {
+func (c *ConversationCache) SaveMessage(ctx context.Context, msg entity.Message) error {
 	key := fmt.Sprintf("conversation:%s", msg.SessionID)
 	rec := messageRecord{
 		Role:      string(msg.Role),
@@ -48,23 +48,23 @@ func (c *ConversationCache) SaveMessage(ctx context.Context, msg domain.Message)
 	return c.client.Expire(ctx, key, c.ttl).Err()
 }
 
-func (c *ConversationCache) GetHistory(ctx context.Context, sessionID string) ([]domain.Message, error) {
+func (c *ConversationCache) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	key := fmt.Sprintf("conversation:%s", sessionID)
 	raw, err := c.client.ZRange(ctx, key, 0, -1).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	messages := make([]domain.Message, 0, len(raw))
+	messages := make([]entity.Message, 0, len(raw))
 	for _, r := range raw {
 		var rec messageRecord
 		if err := json.Unmarshal([]byte(r), &rec); err != nil {
 			continue
 		}
-		messages = append(messages, domain.Message{
+		messages = append(messages, entity.Message{
 			SessionID: sessionID,
 			RequestID: rec.RequestID,
-			Role:      domain.MessageRole(rec.Role),
+			Role:      entity.MessageRole(rec.Role),
 			Content:   rec.Content,
 		})
 	}

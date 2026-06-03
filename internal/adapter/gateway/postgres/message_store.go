@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 
-	"golang-learning/internal/domain"
+	"golang-learning/internal/entity"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,7 +16,7 @@ func NewMessageStore(pool *pgxpool.Pool) *MessageStore {
 	return &MessageStore{pool: pool}
 }
 
-func (s *MessageStore) SaveMessage(ctx context.Context, msg domain.Message) error {
+func (s *MessageStore) SaveMessage(ctx context.Context, msg entity.Message) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO sessions (session_id) VALUES ($1) ON CONFLICT DO NOTHING`,
 		msg.SessionID,
@@ -31,7 +31,7 @@ func (s *MessageStore) SaveMessage(ctx context.Context, msg domain.Message) erro
 	return err
 }
 
-func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]domain.Message, error) {
+func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT request_id, role, content FROM messages WHERE session_id = $1 ORDER BY id ASC`,
 		sessionID,
@@ -41,16 +41,16 @@ func (s *MessageStore) GetHistory(ctx context.Context, sessionID string) ([]doma
 	}
 	defer rows.Close()
 
-	var messages []domain.Message
+	var messages []entity.Message
 	for rows.Next() {
 		var requestID, role, content string
 		if err := rows.Scan(&requestID, &role, &content); err != nil {
 			return nil, err
 		}
-		messages = append(messages, domain.Message{
+		messages = append(messages, entity.Message{
 			SessionID: sessionID,
 			RequestID: requestID,
-			Role:      domain.MessageRole(role),
+			Role:      entity.MessageRole(role),
 			Content:   content,
 		})
 	}
