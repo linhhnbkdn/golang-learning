@@ -48,15 +48,9 @@ token:
 
 chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
-	@RESP=$$(curl -s -X POST http://localhost:$(PORT)/chat \
-		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $(T)" \
-		-d '{"session_id":"$(SESSION)","content":"$(MSG)"}'); \
-	echo $$RESP; \
-	REQUEST_ID=$$(echo $$RESP | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4); \
-	echo "Streaming $$REQUEST_ID ..."; \
-	curl -s "http://localhost:$(PORT)/chat/stream/$$REQUEST_ID" \
-		-H "Authorization: Bearer $(T)"
+	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
+	@echo 'Send: {"content":"your message"}  |  Ctrl+C to exit'
+	@wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"
 
 history:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
@@ -86,12 +80,6 @@ benchmark:
 
 prod-chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
-	@RESP=$$(curl -s -X POST http://localhost:$(PORT)/chat \
-		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $(T)" \
-		-d '{"session_id":"$(SESSION)","content":"$(MSG)"}'); \
-	echo $$RESP; \
-	REQUEST_ID=$$(echo $$RESP | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4); \
-	echo "Streaming $$REQUEST_ID ..."; \
-	curl -s "http://localhost:$(PORT)/chat/stream/$$REQUEST_ID" \
-		-H "Authorization: Bearer $(T)"
+	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
+	@echo 'Send: {"content":"your message"}  |  Ctrl+C to exit'
+	@wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"
