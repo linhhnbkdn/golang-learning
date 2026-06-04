@@ -165,29 +165,28 @@ services:
           cpus: "0.25"
           memory: 512M
 
-  k6:
-    image: grafana/k6
+  locust:
+    build:
+      context: .
+      dockerfile: Dockerfile.locust
     profiles: ["benchmark"]
     ports:
-      - "5665:5665"
+      - "8089:8089"
     volumes:
-      - ./k6:/scripts
-    command: run --out json=/scripts/results.json /scripts/script.js
+      - ./locustfile.py:/mnt/locust/locustfile.py
+    command: -f /mnt/locust/locustfile.py --host http://api:8000
     environment:
       JWT_SECRET: ${JWT_SECRET:-secret}
-      K6_WEB_DASHBOARD: "true"
-      K6_WEB_DASHBOARD_PORT: "5665"
-      K6_WEB_DASHBOARD_OPEN: "false"
     depends_on:
       - api
     deploy:
       resources:
         limits:
           cpus: "4.0"
-          memory: 1G
+          memory: 512M
         reservations:
           cpus: "2.0"
-          memory: 512M
+          memory: 256M
 
 volumes:
   postgres_data:
