@@ -27,34 +27,25 @@ class ChatUser(HttpUser):
 
     @task
     def e2e_chat(self):
-        # Bước 1: gửi message
         with self.client.post(
-            "/chat",
-            json={"session_id": self.session_id, "content": "xin chao"},
+            f"/chat/{self.session_id}",
+            json={"content": "xin chao"},
             headers=self.headers,
+            stream=True,
             catch_response=True,
+            name="/chat/:session_id",
         ) as resp:
             if resp.status_code != 200:
                 resp.failure(f"POST /chat failed: {resp.status_code}")
                 return
-            request_id = resp.json().get("request_id")
-            if not request_id:
-                resp.failure("missing request_id")
-                return
-            resp.success()
-
-        # Bước 2: stream response
-        with self.client.get(
-            f"/chat/stream/{request_id}",
-            headers=self.headers,
-            stream=True,
-            catch_response=True,
-            name="/chat/stream/:request_id",
-        ) as resp:
-            if resp.status_code != 200:
-                resp.failure(f"GET /stream failed: {resp.status_code}")
-                return
             for line in resp.iter_lines():
-                if line == b"data: [DONE]":
-                    break
+                if not line:
+                    continue
+                import json
+                try:
+                    data = json.loads(line)
+                    if data.get("done"):
+                        break
+                except Exception:
+                    continue
             resp.success()

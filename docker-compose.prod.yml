@@ -22,10 +22,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.5"
+          cpus: "2.0"
           memory: 256M
         reservations:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: 128M
 
   worker:
@@ -178,6 +178,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-secret}
     depends_on:
       - api
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 512M
+        reservations:
+          cpus: "2.0"
+          memory: 256M
 
 volumes:
   postgres_data:
