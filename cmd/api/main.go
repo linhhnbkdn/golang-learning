@@ -77,7 +77,9 @@ func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatSt
 	stream.RegisterRoutes(r, authMw)
 	httpSrv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 
-	grpcSrv := grpc.NewServer()
+	grpcSrv := grpc.NewServer(
+		grpc.StreamInterceptor(controllergrpc.StreamAuthInterceptor(cfg.CallbackSecret)),
+	)
 	pb.RegisterTokenServiceServer(grpcSrv, ts)
 
 	lc.Append(fx.Hook{

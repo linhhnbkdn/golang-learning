@@ -54,7 +54,7 @@ func newProcessChatRequest(
 	cfg config.Config,
 ) *usecase.ProcessChatRequestUseCase {
 	grpcTarget := fmt.Sprintf("%s:%s", cfg.APIHost, cfg.GRPCPort)
-	return usecase.NewProcessChatRequest(generator, publisher, cache, grpcTarget)
+	return usecase.NewProcessChatRequest(generator, publisher, cache, grpcTarget, cfg.CallbackSecret)
 }
 
 func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
