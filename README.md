@@ -7,11 +7,14 @@ A Go learning project culminating in a production-style event-driven LLM streami
 ### Data Flow
 
 ```
-POST /chat ──► Kafka: chat.requested ──► Worker (LLM call) ──► Kafka: chat.completed
-                                                  │
-GET /chat/stream/:id ◄── Redis SSE buffer ◄───────┘
-                                                  │
-                                      Persistence Worker ──► PostgreSQL
+GET /history (HTTP)  ──────────────────────────────────────────► Redis / PostgreSQL
+WS  /ws/chat/:session_id?token=JWT
+  │
+  ├─ send msg ──► Kafka: chat.requests ──► Worker (LLM call) ──► Redis Pub/Sub publish
+  │                                                 │
+  └─ recv tokens ◄── Redis Pub/Sub subscribe ◄──────┘
+                                                     │
+                                         Persistence Worker ──► PostgreSQL
 ```
 
 ### Sequence Diagram
@@ -27,36 +30,35 @@ sequenceDiagram
     participant PostgreSQL
 
     rect rgb(230, 240, 255)
-        note over Client,PostgreSQL: POST /chat
-        Client->>API: POST /chat {session_id, content}
+        note over Client,PostgreSQL: WebSocket connect
+        Client->>API: GET /ws/chat/:session_id?token=JWT (Upgrade)
+        API->>API: ParseJWT(token)
         API->>Redis: ClaimOwner SetNX(session_id, userID)
         Redis-->>API: owned=true
-        API->>Kafka: publish chat.requests
-        API->>Redis: SetRequestOwner(request_id, userID)
-        API-->>Client: {request_id}
+        API->>Redis: Subscribe(pubsub:session_id)
+        API-->>Client: 101 Switching Protocols
     end
 
     rect rgb(230, 255, 230)
-        note over Client,PostgreSQL: GET /chat/stream/:request_id
-        Client->>API: GET /chat/stream/:request_id
-        API->>Redis: GetRequestOwner(request_id)
-        Redis-->>API: userID
-        API->>API: Register SSE channel
+        note over Client,PostgreSQL: Send message & stream tokens
+        Client->>API: WS {"content": "..."}
+        API->>Kafka: publish chat.requests
         Kafka->>Worker: consume chat.requests
         loop each token
-            Worker->>Kafka: publish token → chat.responses
-            Kafka->>API: consume token
-            API-->>Client: SSE token
+            Worker->>Redis: Publish(pubsub:session_id, token)
+            Redis-->>API: token via subscription
+            API-->>Client: WS {request_id, delta, done:false}
         end
-        API-->>Client: SSE [DONE]
+        API-->>Client: WS {request_id, delta:"", done:true}
+        API-->>Client: WS CloseNormalClosure (1000)
     end
 
     rect rgb(255, 240, 230)
-        note over Client,PostgreSQL: Lưu vào DB
+        note over Client,PostgreSQL: Persist to DB
         Worker->>Redis: SaveMessage(user msg + full reply)
         Worker->>Kafka: publish chat.completed
         Kafka->>Persistence: consume chat.completed
-        Persistence->>Redis: GetHistory(session_id, filter by request_id)
+        Persistence->>Redis: GetHistory(session_id)
         Redis-->>Persistence: messages
         Persistence->>PostgreSQL: SaveMessage (INSERT)
     end
@@ -84,17 +86,18 @@ sequenceDiagram
 ```
 
 **Services:**
-- **API** — Gin HTTP server, JWT auth, SSE streaming
-- **Worker** — Kafka consumer, calls LLM, publishes responses to Redis + Kafka
+- **API** — Gin HTTP server, JWT auth, WebSocket streaming via Redis Pub/Sub
+- **Worker** — Kafka consumer, calls LLM, publishes tokens to Redis Pub/Sub + Kafka
 - **Persistence** — Kafka consumer on `chat.completed`, writes to PostgreSQL
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| HTTP | Gin |
+| HTTP / WebSocket | Gin + gorilla/websocket |
 | Event bus | Kafka |
-| Cache / SSE state | Redis |
+| Token streaming | Redis Pub/Sub |
+| Cache / session state | Redis |
 | Database | PostgreSQL + GORM |
 | Auth | JWT (golang-jwt/v5) |
 | DI | Uber fx |
@@ -112,7 +115,7 @@ sequenceDiagram
 # 1. Copy env config
 cp .env.example .env
 
-# 2. Start infrastructure (Kafka, Zookeeper, Redis, PostgreSQL)
+# 2. Start all services
 make up
 
 # 3. Run database migrations
@@ -124,7 +127,7 @@ make migrate
 Open three terminals:
 
 ```bash
-make api          # HTTP server on :8000
+make api          # HTTP + WebSocket server on :8000
 make worker       # LLM processing consumer
 make persistence  # Database persistence consumer
 ```
@@ -135,8 +138,10 @@ make persistence  # Database persistence consumer
 # Generate a JWT token for user "li"
 make token USER=li
 
-# Send a chat message and stream the response
-make chat SESSION=my-session MSG="Hello, world!"
+# Connect and chat via WebSocket (requires wscat)
+TOKEN=$(make token USER=li)
+wscat -c "ws://localhost:8000/ws/chat/my-session?token=$TOKEN"
+# then type: {"content":"Tell me about Go channels"}
 
 # View chat history (Redis cache)
 make history SESSION=my-session
@@ -147,31 +152,42 @@ make history-db SESSION=my-session
 
 ## API Endpoints
 
-All endpoints require `Authorization: Bearer <token>`.
+### WebSocket — `/ws/chat/:session_id`
+
+Auth via query param: `?token=<JWT>`
+
+Connect once per session. Send a message, receive a stream of token frames. The server sends `done:true` and closes with `1000 Normal Closure` when streaming finishes.
+
+**Client → Server:**
+```json
+{"content": "Tell me about Go channels"}
+```
+
+**Server → Client (per token):**
+```json
+{"request_id": "abc123", "delta": "Go ", "done": false}
+{"request_id": "abc123", "delta": "channels", "done": false}
+{"request_id": "abc123", "delta": "", "done": true}
+```
+
+**Error frame:**
+```json
+{"error": "stream in progress"}
+```
+
+### HTTP endpoints
+
+All require `Authorization: Bearer <token>`.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/chat` | Submit a chat message |
-| `GET` | `/chat/stream/:request_id` | Stream the LLM response (SSE) |
-| `GET` | `/history/:session_id` | Get session history from Redis |
-| `GET` | `/history/:session_id/db` | Get session history from PostgreSQL |
-
-### POST /chat
-
-```json
-{
-  "session_id": "my-session",
-  "content": "Tell me about Go channels"
-}
-```
-
-Returns `request_id` — use it with the stream endpoint.
+| `GET` | `/history/:session_id` | Session history from Redis |
+| `GET` | `/history/:session_id/db` | Session history from PostgreSQL |
 
 ## Security
 
-- **Session ownership** — first user to open a session claims it via Redis `SetNX`. Subsequent requests from other users are rejected with `403 Forbidden`.
-- **Request ownership** — each `request_id` is bound to the user who created it. The SSE stream endpoint rejects connections from users who don't own the request (IDOR prevention).
-- **JWT auth** — all endpoints require a signed JWT token.
+- **Session ownership** — first user to open a WebSocket for a session claims it via Redis `SetNX`. Other users receive `{"error":"forbidden"}` and the connection is closed.
+- **JWT auth** — WebSocket upgrade requires a valid signed JWT passed as `?token=`.
 
 ## Environment Variables
 
@@ -190,7 +206,7 @@ Returns `request_id` — use it with the stream endpoint.
 
 ```
 cmd/
-  api/              # HTTP server entry point (Gin + fx wiring)
+  api/              # HTTP + WebSocket server entry point (Gin + fx wiring)
   worker/           # LLM consumer entry point
   persistence/      # DB persistence consumer entry point
   migrate/          # Database migration entry point (GORM AutoMigrate)
@@ -202,7 +218,7 @@ internal/
     session.go      # Session
 
   usecase/          # Use Cases ring — business logic + port interfaces
-    port.go         # Input/Output port interfaces
+    boundary.go     # Port interfaces (IPubSubStream, ISessionOwnerStore, ...)
     send_message.go
     get_history.go
     process_chat_request.go
@@ -211,15 +227,16 @@ internal/
   adapter/          # Interface Adapters ring
     controller/     # Inbound — parse input, call use cases
       http/
-        handler/    # Gin HTTP handlers (ChatHandler)
-        middleware/ # JWT auth middleware
-        state/      # SSEState: in-memory request→channel router
-      consumer/     # Kafka consumers (SSE fan-out, worker, persistence)
-    presenter/      # Format use case output → HTTP/gRPC response
+        handler/    # Gin HTTP handlers (history endpoints)
+        middleware/ # JWT auth + ParseJWT helper
+      ws/
+        handler/    # WebSocket handler (ChatWsHandler)
+      consumer/     # Kafka consumers (worker, persistence)
+    presenter/      # Format use case output → HTTP/WS response
       http/         # JSON view models (MessageView, SendMessagePresenter)
     gateway/        # Outbound — implement port interfaces
       store/        # PostgreSQL: MessageStore + GORM models
-      cache/        # Redis: ConversationCache, SessionOwnerStore, RequestOwnerStore
+      cache/        # Redis: ConversationCache, SessionOwnerStore, PubSubStreamImpl
       broker/       # Kafka: EventPublisher
 
   framework/        # Frameworks & Drivers ring — infrastructure setup only
@@ -242,6 +259,7 @@ The Clean Architecture structure makes adding gRPC straightforward — use cases
 adapter/
   controller/
     http/           # existing
+    ws/             # existing
     grpc/           # add new gRPC handlers here
   presenter/
     http/           # existing
