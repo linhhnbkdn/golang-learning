@@ -49,7 +49,7 @@ func main() {
 			usecase.NewGetHistory,
 			handler.NewChatHandler,
 			handler.NewChatStreamHandler,
-			handler.NewTokenCallbackHandler,
+			newTokenCallbackHandler,
 		),
 		fx.Invoke(startServer),
 	).Run()
@@ -65,6 +65,10 @@ func newSendMessage(publisher usecase.IEventPublisher, cfg config.Config) *useca
 	hostname, _ := os.Hostname()
 	callbackBase := fmt.Sprintf("http://%s:%s", hostname, cfg.Port)
 	return usecase.NewSendMessage(publisher, callbackBase)
+}
+
+func newTokenCallbackHandler(h *hub.TokenHub, cfg config.Config) *handler.TokenCallbackHandler {
+	return handler.NewTokenCallbackHandler(h, cfg.CallbackSecret)
 }
 
 func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, cb *handler.TokenCallbackHandler, cfg config.Config, log *zap.Logger) {

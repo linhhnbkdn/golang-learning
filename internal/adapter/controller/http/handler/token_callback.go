@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 
 	"golang-learning/internal/usecase"
 
@@ -9,11 +11,12 @@ import (
 )
 
 type TokenCallbackHandler struct {
-	hub usecase.ITokenHub
+	hub    usecase.ITokenHub
+	secret string
 }
 
-func NewTokenCallbackHandler(hub usecase.ITokenHub) *TokenCallbackHandler {
-	return &TokenCallbackHandler{hub: hub}
+func NewTokenCallbackHandler(hub usecase.ITokenHub, secret string) *TokenCallbackHandler {
+	return &TokenCallbackHandler{hub: hub, secret: secret}
 }
 
 func (h *TokenCallbackHandler) RegisterRoutes(r *gin.Engine) {
@@ -21,8 +24,13 @@ func (h *TokenCallbackHandler) RegisterRoutes(r *gin.Engine) {
 }
 
 func (h *TokenCallbackHandler) Handle(c *gin.Context) {
-	requestID := c.Param("request_id")
+	bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(bearer), []byte(h.secret)) != 1 {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
 
+	requestID := c.Param("request_id")
 	var token usecase.PubSubToken
 	if err := c.ShouldBindJSON(&token); err != nil {
 		c.Status(http.StatusBadRequest)

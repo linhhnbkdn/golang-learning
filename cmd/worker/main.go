@@ -31,7 +31,7 @@ func main() {
 			cache.NewConversationCache,
 			func(c *cache.ConversationCacheImpl) usecase.IConversationCache { return c },
 			func(p *broker.EventPublisherImpl) usecase.IEventPublisher      { return p },
-			usecase.NewProcessChatRequest,
+			newProcessChatRequest,
 			consumer.NewWorker,
 		),
 		fx.Invoke(runWorker),
@@ -45,6 +45,15 @@ func newTokenGenerator(cfg config.Config) (usecase.ITokenGenerator, error) {
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %s", cfg.LLMProvider)
 	}
+}
+
+func newProcessChatRequest(
+	generator usecase.ITokenGenerator,
+	publisher usecase.IEventPublisher,
+	cache usecase.IConversationCache,
+	cfg config.Config,
+) *usecase.ProcessChatRequestUseCase {
+	return usecase.NewProcessChatRequest(generator, publisher, cache, cfg.APICallbackBase, cfg.CallbackSecret)
 }
 
 func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {

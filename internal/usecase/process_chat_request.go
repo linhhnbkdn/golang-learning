@@ -16,20 +16,26 @@ import (
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
 type ProcessChatRequestUseCase struct {
-	generator ITokenGenerator
-	publisher IEventPublisher
-	cache     IConversationCache
+	generator      ITokenGenerator
+	publisher      IEventPublisher
+	cache          IConversationCache
+	callbackBase   string
+	callbackSecret string
 }
 
 func NewProcessChatRequest(
 	generator ITokenGenerator,
 	publisher IEventPublisher,
 	cache IConversationCache,
+	callbackBase string,
+	callbackSecret string,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
-		generator: generator,
-		publisher: publisher,
-		cache:     cache,
+		generator:      generator,
+		publisher:      publisher,
+		cache:          cache,
+		callbackBase:   callbackBase,
+		callbackSecret: callbackSecret,
 	}
 }
 
@@ -55,18 +61,20 @@ func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req share
 		return "", err
 	}
 
+	callbackURL := fmt.Sprintf("%s/internal/tokens/%s", uc.callbackBase, req.RequestID)
+
 	var sb strings.Builder
 	for token := range tokenCh {
 		sb.WriteString(token)
-		if err := postToken(ctx, req.CallbackURL, req.RequestID, token, false); err != nil {
+		if err := uc.postToken(ctx, callbackURL, req.RequestID, token, false); err != nil {
 			return "", err
 		}
 	}
 
-	return sb.String(), postToken(ctx, req.CallbackURL, req.RequestID, "", true)
+	return sb.String(), uc.postToken(ctx, callbackURL, req.RequestID, "", true)
 }
 
-func postToken(ctx context.Context, callbackURL, requestID, delta string, done bool) error {
+func (uc *ProcessChatRequestUseCase) postToken(ctx context.Context, callbackURL, requestID, delta string, done bool) error {
 	body, _ := json.Marshal(PubSubToken{
 		RequestID: requestID,
 		Delta:     delta,
@@ -77,6 +85,7 @@ func postToken(ctx context.Context, callbackURL, requestID, delta string, done b
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+uc.callbackSecret)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
