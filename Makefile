@@ -49,14 +49,10 @@ token:
 
 chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
-	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
-	@if [ -n "$(MSG)" ]; then \
-		wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)" \
-			--execute "{\"content\":\"$(MSG)\"}"; \
-	else \
-		echo 'Type JSON to send, e.g.: {"content":"hello"}'; \
-		wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"; \
-	fi
+	@curl -N -s -X POST http://localhost:$(PORT)/chat/$(SESSION) \
+		-H "Authorization: Bearer $(T)" \
+		-H "Content-Type: application/json" \
+		-d "{\"content\":\"$(MSG)\"}"
 
 history:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
@@ -86,11 +82,7 @@ benchmark:
 
 prod-chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
-	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
-	@if [ -n "$(MSG)" ]; then \
-		wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)" \
-			--execute "{\"content\":\"$(MSG)\"}"; \
-	else \
-		echo 'Type JSON to send, e.g.: {"content":"hello"}'; \
-		wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"; \
-	fi
+	@curl -N -s -X POST http://localhost:$(PORT)/chat/$(SESSION) \
+		-H "Authorization: Bearer $(T)" \
+		-H "Content-Type: application/json" \
+		-d "{\"content\":\"$(MSG)\"}"
