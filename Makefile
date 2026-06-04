@@ -1,7 +1,8 @@
-SESSION ?= demo-001
-MSG     ?= xin chào
-USER    ?= li
-PORT    ?= 8000
+SESSION    ?= demo-001
+MSG        ?= xin chào
+USER       ?= li
+PORT       ?= 8000
+DOCKER_HOST ?= unix:///run/user/1000/docker.sock
 
 .PHONY: up down migrate api worker persistence chat history history-db build token \
         run-api run-worker run-persistence \
@@ -65,13 +66,13 @@ history-db:
 # ── Production ───────────────────────────────────────────────────────────────
 
 prod-up:
-	docker compose -f docker-compose.prod.yml up -d --build
+	DOCKER_HOST=$(DOCKER_HOST) docker compose -f docker-compose.prod.yml up -d --build
 
 prod-down:
-	docker compose -f docker-compose.prod.yml down
+	DOCKER_HOST=$(DOCKER_HOST) docker compose -f docker-compose.prod.yml down
 
 prod-migrate:
-	docker compose -f docker-compose.prod.yml run --rm \
+	DOCKER_HOST=$(DOCKER_HOST) docker compose -f docker-compose.prod.yml run --rm \
 		-e SERVICE=migrate api /app/service
 
 benchmark:
