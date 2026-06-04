@@ -20,14 +20,13 @@ services:
       - postgres
     restart: unless-stopped
     deploy:
-      replicas: 2
       resources:
         limits:
-          cpus: "2.0"
-          memory: 256M
+          cpus: "4.0"
+          memory: 1536M
         reservations:
-          cpus: "1.0"
-          memory: 128M
+          cpus: "2.0"
+          memory: 512M
 
   worker:
     build:
