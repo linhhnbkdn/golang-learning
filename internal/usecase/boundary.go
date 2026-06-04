@@ -28,6 +28,18 @@ type IPubSubStream interface {
 	Subscribe(ctx context.Context, sessionID string) (<-chan PubSubToken, func(), error)
 }
 
+type SSEToken struct {
+	ID    string
+	Delta string
+	Done  bool
+}
+
+type ISSEStream interface {
+	Publish(ctx context.Context, requestID, delta string) error
+	PublishDone(ctx context.Context, requestID string) error
+	Read(ctx context.Context, requestID, lastID string) ([]SSEToken, error)
+}
+
 type IMessageStore interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
 	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
@@ -40,6 +52,11 @@ type ITokenGenerator interface {
 type ISessionOwnerStore interface {
 	ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error)
 	GetOwner(ctx context.Context, sessionID string) (string, error)
+}
+
+type IRequestOwnerStore interface {
+	SetRequestOwner(ctx context.Context, requestID, userID string) error
+	GetRequestOwner(ctx context.Context, requestID string) (string, error)
 }
 
 type ISendMessageOutputPort interface {

@@ -8,25 +8,24 @@ import (
 	"golang-learning/shared"
 )
 
-
 type ProcessChatRequestUseCase struct {
 	generator ITokenGenerator
 	publisher IEventPublisher
 	cache     IConversationCache
-	sseStream ISSEStream
+	pubSub    IPubSubStream
 }
 
 func NewProcessChatRequest(
 	generator ITokenGenerator,
 	publisher IEventPublisher,
 	cache IConversationCache,
-	sseStream ISSEStream,
+	pubSub IPubSubStream,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
 		generator: generator,
 		publisher: publisher,
 		cache:     cache,
-		sseStream: sseStream,
+		pubSub:    pubSub,
 	}
 }
 
@@ -55,12 +54,12 @@ func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req share
 	var sb strings.Builder
 	for token := range tokenCh {
 		sb.WriteString(token)
-		if err := uc.sseStream.Publish(ctx, req.RequestID, token); err != nil {
+		if err := uc.pubSub.Publish(ctx, req.SessionID, req.RequestID, token, false); err != nil {
 			return "", err
 		}
 	}
 
-	return sb.String(), uc.sseStream.PublishDone(ctx, req.RequestID)
+	return sb.String(), uc.pubSub.Publish(ctx, req.SessionID, req.RequestID, "", true)
 }
 
 func (uc *ProcessChatRequestUseCase) cacheMessages(ctx context.Context, req shared.ChatRequest, fullResponse string) error {
