@@ -52,6 +52,7 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect

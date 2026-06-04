@@ -28,9 +28,9 @@ func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *W
 			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "llm-worker",
 			Topic:    "chat.requests",
-			MinBytes: 10e3,        // 10KB — batch nhiều message mỗi fetch
-			MaxBytes: 10e6,        // 10MB max
-			MaxWait:  50 * time.Millisecond, // đợi tối đa 50ms để fill batch
+			MinBytes: 10e3,                   // 10KB — batch nhiều message mỗi fetch
+			MaxBytes: 10e6,                   // 10MB max
+			MaxWait:  50 * time.Millisecond,  // đợi tối đa 50ms để fill batch
 		}),
 	}
 }

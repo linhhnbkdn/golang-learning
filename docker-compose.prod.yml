@@ -10,8 +10,8 @@ services:
       DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
       REDIS_URL: redis://redis:6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    ports:
-      - "${PORT:-8000}:8000"
+      GIN_MODE: release
+      GOMAXPROCS: "12"
     dns:
       - "127.0.0.11"
     depends_on:
@@ -20,6 +20,7 @@ services:
       - postgres
     restart: unless-stopped
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: "2.0"
@@ -47,10 +48,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 64M
+          memory: 256M
         reservations:
           cpus: "0.1"
-          memory: 32M
+          memory: 64M
 
   persistence:
     build:
@@ -123,12 +124,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --save "" --appendonly no --io-threads 4 --io-threads-do-reads yes
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "4.0"
+          memory: 2G
 
   postgres:
     image: postgres:16-alpine
@@ -164,28 +166,29 @@ services:
           cpus: "0.25"
           memory: 512M
 
-  locust:
-    build:
-      context: .
-      dockerfile: Dockerfile.locust
+  k6:
+    image: grafana/k6
     profiles: ["benchmark"]
     ports:
-      - "8089:8089"
+      - "5665:5665"
     volumes:
-      - ./locustfile.py:/mnt/locust/locustfile.py
-    command: -f /mnt/locust/locustfile.py --host http://api:8000
+      - ./k6:/scripts
+    command: run --out json=/scripts/results.json /scripts/script.js
     environment:
       JWT_SECRET: ${JWT_SECRET:-secret}
+      K6_WEB_DASHBOARD: "true"
+      K6_WEB_DASHBOARD_PORT: "5665"
+      K6_WEB_DASHBOARD_OPEN: "false"
     depends_on:
       - api
     deploy:
       resources:
         limits:
           cpus: "4.0"
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: "2.0"
-          memory: 256M
+          memory: 512M
 
 volumes:
   postgres_data:

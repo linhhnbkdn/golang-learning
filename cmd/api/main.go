@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	_ "go.uber.org/automaxprocs"
+
 	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/http/handler"
 	"golang-learning/internal/adapter/controller/http/middleware"
@@ -56,7 +58,9 @@ func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher     
 func asPubSubStream(s *cache.PubSubStreamImpl) usecase.IPubSubStream                { return s }
 
 func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, cfg config.Config, log *zap.Logger) {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.AsyncLogger(log))
 	authMw := middleware.JWT(cfg)
 	h.RegisterRoutes(r, authMw)
 	stream.RegisterRoutes(r, authMw)
