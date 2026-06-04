@@ -48,6 +48,11 @@ func (c *ConversationCacheImpl) SaveMessage(ctx context.Context, msg entity.Mess
 	return c.client.Expire(ctx, key, c.ttl).Err()
 }
 
+func (c *ConversationCacheImpl) DeleteSession(ctx context.Context, sessionID string) error {
+	key := fmt.Sprintf("conversation:%s", sessionID)
+	return c.client.Del(ctx, key).Err()
+}
+
 func (c *ConversationCacheImpl) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	key := fmt.Sprintf("conversation:%s", sessionID)
 	raw, err := c.client.ZRange(ctx, key, 0, -1).Result()

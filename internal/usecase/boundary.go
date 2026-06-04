@@ -10,6 +10,7 @@ import (
 type IConversationCache interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
 	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
+	DeleteSession(ctx context.Context, sessionID string) error
 }
 
 type IEventPublisher interface {
@@ -30,6 +31,7 @@ type IPubSubStream interface {
 
 type IMessageStore interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
+	BulkSaveMessages(ctx context.Context, msgs []entity.Message) error
 	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
 }
 

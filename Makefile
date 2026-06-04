@@ -77,8 +77,7 @@ prod-migrate:
 		-e SERVICE=migrate api /app/service
 
 benchmark:
-	docker compose -f docker-compose.prod.yml --profile benchmark up -d locust
-	@echo "Locust UI: http://localhost:8089"
+	docker compose -f docker-compose.prod.yml --profile benchmark up -d k6
 
 prod-chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
