@@ -29,6 +29,11 @@ type IPubSubStream interface {
 	Subscribe(ctx context.Context, sessionID string) (<-chan PubSubToken, func(), error)
 }
 
+type ITokenHub interface {
+	Register(requestID string) (<-chan PubSubToken, func())
+	Deliver(requestID string, token PubSubToken)
+}
+
 type IMessageStore interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
 	BulkSaveMessages(ctx context.Context, msgs []entity.Message) error

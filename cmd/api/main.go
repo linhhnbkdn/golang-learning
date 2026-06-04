@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 
 	_ "go.uber.org/automaxprocs"
 
@@ -11,6 +13,7 @@ import (
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/adapter/gateway/broker"
 	"golang-learning/internal/adapter/gateway/cache"
+	"golang-learning/internal/adapter/gateway/hub"
 	"golang-learning/internal/adapter/gateway/store"
 	frameworkpostgres "golang-learning/internal/framework/postgres"
 	frameworkredis "golang-learning/internal/framework/redis"
@@ -35,17 +38,18 @@ func main() {
 			broker.NewEventPublisher,
 			cache.NewConversationCache,
 			cache.NewSessionOwnerStore,
-			cache.NewPubSubStream,
 			store.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
 			asMessageStore,
 			asEventPublisher,
-			asPubSubStream,
-			usecase.NewSendMessage,
+			hub.New,
+			asTokenHub,
+			newSendMessage,
 			usecase.NewGetHistory,
 			handler.NewChatHandler,
 			handler.NewChatStreamHandler,
+			handler.NewTokenCallbackHandler,
 		),
 		fx.Invoke(startServer),
 	).Run()
@@ -55,15 +59,22 @@ func asConversationCache(c *cache.ConversationCacheImpl) usecase.IConversationCa
 func asSessionOwnerStore(s *cache.SessionOwnerStoreImpl) usecase.ISessionOwnerStore { return s }
 func asMessageStore(s *store.MessageStoreImpl) usecase.IMessageStore                { return s }
 func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher         { return p }
-func asPubSubStream(s *cache.PubSubStreamImpl) usecase.IPubSubStream                { return s }
+func asTokenHub(h *hub.TokenHub) usecase.ITokenHub                                  { return h }
 
-func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, cfg config.Config, log *zap.Logger) {
+func newSendMessage(publisher usecase.IEventPublisher, cfg config.Config) *usecase.SendMessageUseCase {
+	hostname, _ := os.Hostname()
+	callbackBase := fmt.Sprintf("http://%s:%s", hostname, cfg.Port)
+	return usecase.NewSendMessage(publisher, callbackBase)
+}
+
+func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, cb *handler.TokenCallbackHandler, cfg config.Config, log *zap.Logger) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.AsyncLogger(log))
 	authMw := middleware.JWT(cfg)
 	h.RegisterRoutes(r, authMw)
 	stream.RegisterRoutes(r, authMw)
+	cb.RegisterRoutes(r)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 
 	lc.Append(fx.Hook{

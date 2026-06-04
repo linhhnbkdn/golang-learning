@@ -1,31 +1,35 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"golang-learning/internal/entity"
 	"golang-learning/shared"
 )
 
+var httpClient = &http.Client{Timeout: 5 * time.Second}
+
 type ProcessChatRequestUseCase struct {
 	generator ITokenGenerator
 	publisher IEventPublisher
 	cache     IConversationCache
-	pubSub    IPubSubStream
 }
 
 func NewProcessChatRequest(
 	generator ITokenGenerator,
 	publisher IEventPublisher,
 	cache IConversationCache,
-	pubSub IPubSubStream,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
 		generator: generator,
 		publisher: publisher,
 		cache:     cache,
-		pubSub:    pubSub,
 	}
 }
 
@@ -54,12 +58,34 @@ func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req share
 	var sb strings.Builder
 	for token := range tokenCh {
 		sb.WriteString(token)
-		if err := uc.pubSub.Publish(ctx, req.SessionID, req.RequestID, token, false); err != nil {
+		if err := postToken(ctx, req.CallbackURL, req.RequestID, token, false); err != nil {
 			return "", err
 		}
 	}
 
-	return sb.String(), uc.pubSub.Publish(ctx, req.SessionID, req.RequestID, "", true)
+	return sb.String(), postToken(ctx, req.CallbackURL, req.RequestID, "", true)
+}
+
+func postToken(ctx context.Context, callbackURL, requestID, delta string, done bool) error {
+	body, _ := json.Marshal(PubSubToken{
+		RequestID: requestID,
+		Delta:     delta,
+		Done:      done,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("callback returned %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (uc *ProcessChatRequestUseCase) cacheMessages(ctx context.Context, req shared.ChatRequest, fullResponse string) error {

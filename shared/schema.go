@@ -7,10 +7,11 @@ import (
 )
 
 type ChatRequest struct {
-	RequestID string  `json:"request_id"`
-	SessionID string  `json:"session_id"`
-	Content   string  `json:"content"`
-	Timestamp float64 `json:"timestamp"`
+	RequestID   string  `json:"request_id"`
+	SessionID   string  `json:"session_id"`
+	Content     string  `json:"content"`
+	Timestamp   float64 `json:"timestamp"`
+	CallbackURL string  `json:"callback_url"`
 }
 
 func NewChatRequest(sessionID, content string) ChatRequest {
