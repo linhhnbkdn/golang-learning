@@ -3,6 +3,7 @@ package wshandler
 import (
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/http/middleware"
@@ -100,6 +101,7 @@ func (h *ChatWsHandler) Handle(c *gin.Context) {
 				return
 			}
 		}
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	}()
 
 	var streaming int32
@@ -112,7 +114,9 @@ func (h *ChatWsHandler) Handle(c *gin.Context) {
 			}
 			if token.Done {
 				atomic.StoreInt32(&streaming, 0)
-				conn.Close()
+				// Unblock conn.ReadJSON in the main loop so it can exit cleanly.
+				// The write goroutine will flush done:true then send a proper close frame.
+				conn.SetReadDeadline(time.Now())
 				return
 			}
 		}
