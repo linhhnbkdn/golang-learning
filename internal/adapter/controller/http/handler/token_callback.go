@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,8 +16,11 @@ type TokenCallbackHandler struct {
 	secret string
 }
 
-func NewTokenCallbackHandler(hub usecase.ITokenHub, secret string) *TokenCallbackHandler {
-	return &TokenCallbackHandler{hub: hub, secret: secret}
+func NewTokenCallbackHandler(hub usecase.ITokenHub, secret string) (*TokenCallbackHandler, error) {
+	if secret == "" {
+		return nil, fmt.Errorf("CALLBACK_SECRET must not be empty")
+	}
+	return &TokenCallbackHandler{hub: hub, secret: secret}, nil
 }
 
 func (h *TokenCallbackHandler) RegisterRoutes(r *gin.Engine) {
@@ -24,8 +28,12 @@ func (h *TokenCallbackHandler) RegisterRoutes(r *gin.Engine) {
 }
 
 func (h *TokenCallbackHandler) Handle(c *gin.Context) {
-	bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(bearer), []byte(h.secret)) != 1 {
+	authz := c.GetHeader("Authorization")
+	bearer := ""
+	if strings.HasPrefix(authz, "Bearer ") {
+		bearer = strings.TrimPrefix(authz, "Bearer ")
+	}
+	if h.secret == "" || subtle.ConstantTimeCompare([]byte(bearer), []byte(h.secret)) != 1 {
 		c.Status(http.StatusUnauthorized)
 		return
 	}

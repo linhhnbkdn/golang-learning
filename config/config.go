@@ -15,8 +15,9 @@ type Config struct {
 	OpenAIAPIKey    string
 	JWTSecret       string
 	Port            string
-	CallbackSecret  string
-	APICallbackBase string
+	CallbackSecret string
+	APIHost        string
+	GRPCPort       string
 }
 
 func Load() Config {
@@ -35,6 +36,11 @@ func Load() Config {
 		port = "8000"
 	}
 
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "50051"
+	}
+
 	brokers := strings.Split(os.Getenv("KAFKA_BOOTSTRAP_SERVERS"), ",")
 
 	return Config{
@@ -46,7 +52,8 @@ func Load() Config {
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		JWTSecret:       os.Getenv("JWT_SECRET"),
 		Port:            port,
-		CallbackSecret:  os.Getenv("CALLBACK_SECRET"),
-		APICallbackBase: os.Getenv("API_CALLBACK_BASE"),
+		CallbackSecret: os.Getenv("CALLBACK_SECRET"),
+		APIHost:        os.Getenv("API_HOST"),
+		GRPCPort:       grpcPort,
 	}
 }

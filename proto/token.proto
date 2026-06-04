@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package token;
+option go_package = "golang-learning/proto/gen";
+
+service TokenService {
+  rpc DeliverTokens(stream TokenMessage) returns (Ack);
+}
+
+message TokenMessage {
+  string request_id = 1;
+  string delta      = 2;
+  bool   done       = 3;
+}
+
+message Ack {}

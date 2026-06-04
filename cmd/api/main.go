@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
-	"os"
 
 	_ "go.uber.org/automaxprocs"
 
 	"golang-learning/config"
+	controllergrpc "golang-learning/internal/adapter/controller/grpc"
 	"golang-learning/internal/adapter/controller/http/handler"
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/adapter/gateway/broker"
@@ -19,11 +20,13 @@ import (
 	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
+	pb "golang-learning/proto/gen"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -49,7 +52,7 @@ func main() {
 			usecase.NewGetHistory,
 			handler.NewChatHandler,
 			handler.NewChatStreamHandler,
-			newTokenCallbackHandler,
+			controllergrpc.NewTokenServer,
 		),
 		fx.Invoke(startServer),
 	).Run()
@@ -62,33 +65,36 @@ func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher     
 func asTokenHub(h *hub.TokenHub) usecase.ITokenHub                                  { return h }
 
 func newSendMessage(publisher usecase.IEventPublisher, cfg config.Config) *usecase.SendMessageUseCase {
-	hostname, _ := os.Hostname()
-	callbackBase := fmt.Sprintf("http://%s:%s", hostname, cfg.Port)
-	return usecase.NewSendMessage(publisher, callbackBase)
+	return usecase.NewSendMessage(publisher, "")
 }
 
-func newTokenCallbackHandler(h *hub.TokenHub, cfg config.Config) *handler.TokenCallbackHandler {
-	return handler.NewTokenCallbackHandler(h, cfg.CallbackSecret)
-}
-
-func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, cb *handler.TokenCallbackHandler, cfg config.Config, log *zap.Logger) {
+func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, ts *controllergrpc.TokenServer, cfg config.Config, log *zap.Logger) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.AsyncLogger(log))
 	authMw := middleware.JWT(cfg)
 	h.RegisterRoutes(r, authMw)
 	stream.RegisterRoutes(r, authMw)
-	cb.RegisterRoutes(r)
-	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
+	httpSrv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
+
+	grpcSrv := grpc.NewServer()
+	pb.RegisterTokenServiceServer(grpcSrv, ts)
 
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
-			log.Info("API server starting", zap.String("port", cfg.Port))
-			go srv.ListenAndServe()
+			log.Info("API server starting", zap.String("port", cfg.Port), zap.String("grpc_port", cfg.GRPCPort))
+			go httpSrv.ListenAndServe()
+
+			lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
+			if err != nil {
+				return err
+			}
+			go grpcSrv.Serve(lis)
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			return srv.Shutdown(ctx)
+			grpcSrv.GracefulStop()
+			return httpSrv.Shutdown(ctx)
 		},
 	})
 }

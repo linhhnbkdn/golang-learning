@@ -1,41 +1,36 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
-	"time"
 
 	"golang-learning/internal/entity"
+	pb "golang-learning/proto/gen"
 	"golang-learning/shared"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-var httpClient = &http.Client{Timeout: 5 * time.Second}
-
 type ProcessChatRequestUseCase struct {
-	generator      ITokenGenerator
-	publisher      IEventPublisher
-	cache          IConversationCache
-	callbackBase   string
-	callbackSecret string
+	generator   ITokenGenerator
+	publisher   IEventPublisher
+	cache       IConversationCache
+	grpcTarget  string
 }
 
 func NewProcessChatRequest(
 	generator ITokenGenerator,
 	publisher IEventPublisher,
 	cache IConversationCache,
-	callbackBase string,
-	callbackSecret string,
+	grpcTarget string,
 ) *ProcessChatRequestUseCase {
 	return &ProcessChatRequestUseCase{
-		generator:      generator,
-		publisher:      publisher,
-		cache:          cache,
-		callbackBase:   callbackBase,
-		callbackSecret: callbackSecret,
+		generator:  generator,
+		publisher:  publisher,
+		cache:      cache,
+		grpcTarget: grpcTarget,
 	}
 }
 
@@ -44,11 +39,9 @@ func (uc *ProcessChatRequestUseCase) Execute(ctx context.Context, req shared.Cha
 	if err != nil {
 		return err
 	}
-
 	if err := uc.cacheMessages(ctx, req, fullResponse); err != nil {
 		return err
 	}
-
 	return uc.publisher.PublishCompleted(ctx, shared.ChatCompleted{
 		SessionID: req.SessionID,
 		RequestID: req.RequestID,
@@ -56,45 +49,47 @@ func (uc *ProcessChatRequestUseCase) Execute(ctx context.Context, req shared.Cha
 }
 
 func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req shared.ChatRequest) (string, error) {
+	conn, err := grpc.NewClient(uc.grpcTarget, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return "", fmt.Errorf("grpc dial: %w", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewTokenServiceClient(conn)
+	stream, err := client.DeliverTokens(ctx)
+	if err != nil {
+		return "", fmt.Errorf("grpc stream: %w", err)
+	}
+
 	tokenCh, err := uc.generator.Generate(ctx, req.Content)
 	if err != nil {
 		return "", err
 	}
 
-	callbackURL := fmt.Sprintf("%s/internal/tokens/%s", uc.callbackBase, req.RequestID)
-
 	var sb strings.Builder
 	for token := range tokenCh {
 		sb.WriteString(token)
-		if err := uc.postToken(ctx, callbackURL, req.RequestID, token, false); err != nil {
+		if err := stream.Send(&pb.TokenMessage{
+			RequestId: req.RequestID,
+			Delta:     token,
+			Done:      false,
+		}); err != nil {
 			return "", err
 		}
 	}
 
-	return sb.String(), uc.postToken(ctx, callbackURL, req.RequestID, "", true)
-}
+	if err := stream.Send(&pb.TokenMessage{
+		RequestId: req.RequestID,
+		Done:      true,
+	}); err != nil {
+		return "", err
+	}
 
-func (uc *ProcessChatRequestUseCase) postToken(ctx context.Context, callbackURL, requestID, delta string, done bool) error {
-	body, _ := json.Marshal(PubSubToken{
-		RequestID: requestID,
-		Delta:     delta,
-		Done:      done,
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(body))
-	if err != nil {
-		return err
+	if _, err := stream.CloseAndRecv(); err != nil {
+		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+uc.callbackSecret)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("callback returned %d", resp.StatusCode)
-	}
-	return nil
+
+	return sb.String(), nil
 }
 
 func (uc *ProcessChatRequestUseCase) cacheMessages(ctx context.Context, req shared.ChatRequest, fullResponse string) error {
