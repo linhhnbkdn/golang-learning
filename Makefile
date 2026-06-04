@@ -50,7 +50,7 @@ token:
 chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
 	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
-	@echo 'Send: {"content":"your message"}  |  Ctrl+C to exit'
+	@echo 'Type JSON to send, e.g.: {"content":"$(MSG)"}'
 	@wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"
 
 history:
@@ -82,5 +82,5 @@ benchmark:
 prod-chat:
 	$(eval T := $(shell go run ./cmd/gentoken/ $(USER)))
 	@echo "Connecting to ws://localhost:$(PORT)/ws/chat/$(SESSION)"
-	@echo 'Send: {"content":"your message"}  |  Ctrl+C to exit'
+	@echo 'Type JSON to send, e.g.: {"content":"$(MSG)"}'
 	@wscat -c "ws://localhost:$(PORT)/ws/chat/$(SESSION)?token=$(T)"
