@@ -17,16 +17,15 @@ type IEventPublisher interface {
 	PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error
 }
 
-type SSEToken struct {
-	ID    string
-	Delta string
-	Done  bool
+type PubSubToken struct {
+	RequestID string
+	Delta     string
+	Done      bool
 }
 
-type ISSEStream interface {
-	Publish(ctx context.Context, requestID, delta string) error
-	PublishDone(ctx context.Context, requestID string) error
-	Read(ctx context.Context, requestID, lastID string) ([]SSEToken, error)
+type IPubSubStream interface {
+	Publish(ctx context.Context, sessionID, requestID, delta string, done bool) error
+	Subscribe(ctx context.Context, sessionID string) (<-chan PubSubToken, func(), error)
 }
 
 type IMessageStore interface {
@@ -39,19 +38,9 @@ type ITokenGenerator interface {
 }
 
 type ISessionOwnerStore interface {
-	// ClaimOwner atomically sets owner if not exists (SetNX).
-	// Returns true if this user owns the session (claimed now or already owned by them).
-	// Returns false if the session is owned by a different user.
 	ClaimOwner(ctx context.Context, sessionID, userID string) (bool, error)
 	GetOwner(ctx context.Context, sessionID string) (string, error)
 }
-
-type IRequestOwnerStore interface {
-	SetRequestOwner(ctx context.Context, requestID, userID string) error
-	GetRequestOwner(ctx context.Context, requestID string) (string, error)
-}
-
-// Output ports — use cases call these to deliver results to the presenter.
 
 type ISendMessageOutputPort interface {
 	PresentRequestID(requestID string)
