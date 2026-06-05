@@ -120,6 +120,64 @@ Persistence Worker:
       commit Kafka offset
 ```
 
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API
+    participant Redis
+    participant Kafka
+    participant LLMWorker as LLM-Request-Worker
+    participant StreamWorker as Streaming-Worker
+    participant PersistWorker as Persistence-Worker
+    participant PostgreSQL
+
+    rect rgb(230, 255, 230)
+        note over Client,PostgreSQL: Send message
+        Client->>API: POST /chat/:session_id {"content": "..."}
+        API->>Redis: ClaimOwner EVALSHA(session_id, userID)
+        Redis-->>API: owned=true
+        API->>Redis: set stream:callback:{requestID} → "api-1:50051"
+        API->>Kafka: publish chat.requests
+        note over API,Client: HTTP 200 — NDJSON stream (connection stays open)
+    end
+
+    rect rgb(230, 245, 255)
+        note over LLMWorker,Kafka: LLM generate & publish to dual topics
+        Kafka->>LLMWorker: consume chat.requests
+        LLMWorker->>LLMWorker: call LLM
+        loop each token
+            LLMWorker->>Kafka: publish stream-llm-fe (linger=0ms)
+            LLMWorker->>Kafka: publish persistence-llm (linger=100ms)
+        end
+    end
+
+    rect rgb(245, 230, 255)
+        note over StreamWorker,Client: Real-time streaming to browser
+        Kafka->>StreamWorker: consume stream-llm-fe
+        StreamWorker->>Redis: get stream:callback:{requestID} (RAM cache miss only)
+        Redis-->>StreamWorker: "api-1:50051"
+        loop each token
+            StreamWorker->>API: gRPC DeliverTokens(requestID, delta)
+            API-->>Client: {"request_id","delta","done":false}
+        end
+        API-->>Client: {"done":true}
+    end
+
+    rect rgb(255, 240, 230)
+        note over PersistWorker,PostgreSQL: Periodic persistence (every 500 tokens or 1 min)
+        Kafka->>PersistWorker: consume persistence-llm
+        PersistWorker->>PersistWorker: buffer tokens per requestID
+        note over PersistWorker: flush trigger: 500 tokens OR 1 minute
+        PersistWorker->>PostgreSQL: batch read existing content per session
+        PostgreSQL-->>PersistWorker: current content
+        PersistWorker->>PersistWorker: merge db_content + buffer
+        PersistWorker->>PostgreSQL: bulk upsert (ON CONFLICT DO UPDATE)
+        PersistWorker->>PersistWorker: clear buffer, commit Kafka offset
+    end
+```
+
 ### Why Dual Topics
 
 | Topic | Optimization | Config |
