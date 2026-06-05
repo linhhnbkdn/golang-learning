@@ -11,11 +11,11 @@ POST /chat/:session_id
   │
   ├── API: ClaimOwner (Redis) + Register TokenHub + publish chat.requests (Kafka)
   │
-  └── Worker: consume chat.requests → call LLM → gRPC stream tokens → API TokenHub
-                                                                          │
-                                                              API → NDJSON stream → Browser
+  └── LLM-Request-Worker: consume chat.requests → call LLM → gRPC stream tokens → API TokenHub
+                                                                                       │
+                                                                           API → NDJSON stream → Browser
 
-chat.completed (Kafka) → Persistence Worker → Redis GetHistory → PostgreSQL upsert
+chat.completed (Kafka) → Persistence → Redis GetHistory → PostgreSQL bulk upsert
 ```
 
 ### Sequence Diagram
@@ -26,7 +26,7 @@ sequenceDiagram
     participant API
     participant Redis
     participant Kafka
-    participant Worker
+    participant LLMWorker as LLM-Request-Worker
     participant Persistence
     participant PostgreSQL
 
@@ -39,10 +39,10 @@ sequenceDiagram
         API->>API: TokenHub.Register(requestID)
         API->>Kafka: publish chat.requests
         note over API,Client: HTTP 200 — NDJSON stream (connection stays open)
-        Kafka->>Worker: consume chat.requests
-        Worker->>Worker: call LLM (mock: 20ms/token)
+        Kafka->>LLMWorker: consume chat.requests
+        LLMWorker->>LLMWorker: call LLM (mock: 20ms/token)
         loop each token
-            Worker->>API: gRPC DeliverTokens(requestID, delta)
+            LLMWorker->>API: gRPC DeliverTokens(requestID, delta)
             API->>API: TokenHub.Deliver(requestID, token)
             API-->>Client: {"request_id","delta","done":false}
         end
@@ -51,8 +51,8 @@ sequenceDiagram
 
     rect rgb(255, 240, 230)
         note over Client,PostgreSQL: Persist to DB
-        Worker->>Redis: SaveMessages(user msg + full reply)
-        Worker->>Kafka: publish chat.completed
+        LLMWorker->>Redis: SaveMessages(user msg + full reply)
+        LLMWorker->>Kafka: publish chat.completed
         Kafka->>Persistence: consume chat.completed
         Persistence->>Redis: GetHistory(session_id, last 20)
         Redis-->>Persistence: messages
@@ -65,14 +65,14 @@ sequenceDiagram
 | Service | Role |
 |---|---|
 | **API** | Gin HTTP, JWT auth, NDJSON streaming, gRPC server (TokenHub) |
-| **Worker** | Kafka consumer, LLM call, gRPC client stream tokens to API |
+| **LLM-Request-Worker** | Kafka consumer, LLM call, gRPC client stream tokens to API |
 | **Persistence** | Kafka consumer on `chat.completed`, batch upsert to PostgreSQL |
 
 ### Infrastructure Tuning (current)
 
 | Component | Config | Reason |
 |---|---|---|
-| Worker | 2 replicas, 2 CPU each | Kafka partition parallelism |
+| LLM-Request-Worker | 2 replicas, 2 CPU each | Kafka partition parallelism |
 | gRPC | `MaxConcurrentStreams=1000` | Handle concurrent token streams |
 | gRPC conn | Shared per worker (reused) | Eliminate per-request connection overhead |
 | Redis | Single-threaded (no io-threads) | Low ops/sec — threading overhead > benefit |
