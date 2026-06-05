@@ -43,16 +43,11 @@ func (uc *StreamTokensUseCase) Execute(ctx context.Context, token shared.TokenEv
 		Delta:     token.Delta,
 		Done:      token.Done,
 	}); err != nil {
-		// Conn có thể stale sau khi API restart — xóa stream + conn để force reconnect
+		// Chỉ evict stream của request này — không xóa shared conn
+		// gRPC ClientConn tự handle reconnect qua keepalive
 		uc.streams.Delete(token.RequestID)
 		uc.addrMap.Delete(token.RequestID)
-		addr, _ := uc.resolveAddr(ctx, token.RequestID)
-		if addr != "" {
-			uc.connMu.Lock()
-			delete(uc.connMap, addr)
-			uc.connMu.Unlock()
-		}
-		return fmt.Errorf("send failed (conn evicted, retry next token): %w", err)
+		return fmt.Errorf("send failed: %w", err)
 	}
 
 	if token.Done {
