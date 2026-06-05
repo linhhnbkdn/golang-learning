@@ -58,8 +58,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 128M
+          cpus: "2.0"
+          memory: 256M
 
   llm-request-worker:
     build:

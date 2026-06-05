@@ -3,8 +3,8 @@ MSG     ?= xin chào
 USER    ?= li
 PORT    ?= 8000
 
-.PHONY: up down migrate api worker persistence chat history history-db build token \
-        run-api run-worker run-persistence \
+.PHONY: up down migrate api worker streaming-worker persistence chat history history-db build token \
+        run-api run-worker run-streaming-worker run-persistence \
         prod-up prod-down prod-migrate prod-chat \
         benchmark
 
@@ -28,17 +28,24 @@ worker:
 persistence:
 	go run ./cmd/persistence/
 
+streaming-worker:
+	go run ./cmd/streaming-worker/
+
 build:
-	go build -o ./api         ./cmd/api/
-	go build -o ./worker      ./cmd/worker/
-	go build -o ./persistence ./cmd/persistence/
-	go build -o ./migrate     ./cmd/migrate/
+	go build -o ./api              ./cmd/api/
+	go build -o ./worker           ./cmd/worker/
+	go build -o ./streaming-worker ./cmd/streaming-worker/
+	go build -o ./persistence      ./cmd/persistence/
+	go build -o ./migrate          ./cmd/migrate/
 
 run-api: build
 	./api
 
 run-worker: build
 	./worker
+
+run-streaming-worker: build
+	./streaming-worker
 
 run-persistence: build
 	./persistence

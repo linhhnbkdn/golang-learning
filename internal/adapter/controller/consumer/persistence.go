@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"golang-learning/config"
@@ -19,8 +20,9 @@ const (
 )
 
 type PersistenceWorker struct {
-	useCase *usecase.PersistSessionUseCase
-	reader  *kafka.Reader
+	useCase   *usecase.PersistSessionUseCase
+	reader    *kafka.Reader
+	flushing  atomic.Bool // prevent concurrent flushes
 }
 
 func NewPersistenceWorker(cfg config.Config, useCase *usecase.PersistSessionUseCase) *PersistenceWorker {
@@ -66,8 +68,11 @@ func (w *PersistenceWorker) Run(ctx context.Context) error {
 
 		w.useCase.AddToken(token)
 
-		if w.useCase.ShouldFlush(persistTokenThreshold) {
-			go w.flush(ctx)
+		if w.useCase.ShouldFlush(persistTokenThreshold) && w.flushing.CompareAndSwap(false, true) {
+			go func() {
+				defer w.flushing.Store(false)
+				w.flush(ctx)
+			}()
 		}
 	}
 }
@@ -81,7 +86,10 @@ func (w *PersistenceWorker) runFlusher(ctx context.Context) {
 			w.flush(context.Background())
 			return
 		case <-ticker.C:
-			w.flush(ctx)
+			if w.flushing.CompareAndSwap(false, true) {
+				w.flush(ctx)
+				w.flushing.Store(false)
+			}
 		}
 	}
 }
