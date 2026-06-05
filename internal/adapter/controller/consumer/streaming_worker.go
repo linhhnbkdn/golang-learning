@@ -74,7 +74,7 @@ func (w *StreamingWorker) route(ctx context.Context, token shared.TokenEvent) {
 	if !exists {
 		ch = make(chan shared.TokenEvent, 256)
 		w.channels[token.RequestID] = ch
-		go w.processRequest(ctx, token.RequestID, ch)
+			go w.processRequest(ctx, token.RequestID, ch)
 	}
 	w.mu.Unlock()
 
@@ -93,6 +93,7 @@ func (w *StreamingWorker) processRequest(ctx context.Context, requestID string, 
 			slog.Error("streaming worker deliver error", "err", err, "request_id", requestID)
 		}
 		if token.Done {
+			slog.Info("streaming worker request done", "request_id", requestID)
 			return
 		}
 	}

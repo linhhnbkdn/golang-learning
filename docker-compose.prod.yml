@@ -7,7 +7,7 @@ services:
         SERVICE: api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb?sslmode=disable
       REDIS_URL: redis://redis:6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       GIN_MODE: release
@@ -98,7 +98,7 @@ services:
         SERVICE: persistence
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       kafka:
@@ -123,7 +123,7 @@ services:
         SERVICE: migrate
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb
+      DATABASE_URL: postgresql://app:app@postgres:5432/chatdb?sslmode=disable
     depends_on:
       - postgres
     restart: "no"
