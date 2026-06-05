@@ -26,6 +26,7 @@ services:
         condition: service_started
     restart: unless-stopped
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: "4.0"
@@ -110,7 +111,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 64M
+          memory: 128M
         reservations:
           cpus: "0.1"
           memory: 32M
@@ -137,7 +138,7 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: 128M
+          memory: 256M
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -176,8 +177,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4.0"
-          memory: 2G
+          cpus: "1.0"
+          memory: 256M
 
   postgres:
     image: postgres:16-alpine
@@ -192,10 +193,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 128M
+          memory: 256M
         reservations:
           cpus: "0.1"
-          memory: 64M
+          memory: 128M
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -224,8 +225,7 @@ services:
     volumes:
       - ./locustfile.py:/mnt/locust/locustfile.py
     command: -f /mnt/locust/locustfile.py --master --host http://api:8000
-    environment:
-      JWT_SECRET: ${JWT_SECRET:-secret}
+    env_file: .env
     deploy:
       resources:
         limits:
@@ -240,8 +240,7 @@ services:
     volumes:
       - ./locustfile.py:/mnt/locust/locustfile.py
     command: -f /mnt/locust/locustfile.py --worker --master-host locust-master
-    environment:
-      JWT_SECRET: ${JWT_SECRET:-secret}
+    env_file: .env
     depends_on:
       - locust-master
     deploy:
