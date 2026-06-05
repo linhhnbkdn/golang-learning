@@ -31,7 +31,7 @@ services:
           cpus: "2.0"
           memory: 512M
 
-  worker:
+  llm-request-worker:
     build:
       context: .
       dockerfile: Dockerfile
