@@ -76,7 +76,8 @@ prod-migrate:
 		-e SERVICE=migrate api /app/service
 
 benchmark:
-	docker compose -f docker-compose.prod.yml --profile benchmark up -d locust --build
+	docker compose -f docker-compose.prod.yml up -d
+	docker compose -f docker-compose.prod.yml --profile benchmark up -d locust-master locust-worker --build
 	@echo "Locust UI: http://localhost:8089"
 
 prod-chat:

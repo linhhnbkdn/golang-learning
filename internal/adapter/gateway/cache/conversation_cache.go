@@ -55,7 +55,7 @@ func (c *ConversationCacheImpl) DeleteSession(ctx context.Context, sessionID str
 
 func (c *ConversationCacheImpl) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	key := fmt.Sprintf("conversation:%s", sessionID)
-	raw, err := c.client.ZRange(ctx, key, 0, -1).Result()
+	raw, err := c.client.ZRange(ctx, key, -20, -1).Result()
 	if err != nil {
 		return nil, err
 	}

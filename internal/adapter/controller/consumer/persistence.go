@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	persistBatchSize    = 50
+	persistBatchSize    = 500
 	persistFlushTimeout = 2 * time.Second
 )
 
@@ -64,6 +64,7 @@ func (w *PersistenceWorker) Run(ctx context.Context) error {
 		if err := w.reader.CommitMessages(ctx, msgs...); err != nil {
 			slog.Error("persistence commit error", "err", err)
 		}
+		slog.Info("batch persisted", "count", len(batch))
 	}
 	return nil
 }

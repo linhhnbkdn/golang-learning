@@ -14,11 +14,11 @@ import (
 )
 
 type ProcessChatRequestUseCase struct {
-	generator      ITokenGenerator
-	publisher      IEventPublisher
-	cache          IConversationCache
-	grpcTarget     string
-	callbackSecret string
+	generator ITokenGenerator
+	publisher IEventPublisher
+	cache     IConversationCache
+	conn      *grpc.ClientConn
+	client    pb.TokenServiceClient
 }
 
 func NewProcessChatRequest(
@@ -27,14 +27,25 @@ func NewProcessChatRequest(
 	cache IConversationCache,
 	grpcTarget string,
 	callbackSecret string,
-) *ProcessChatRequestUseCase {
-	return &ProcessChatRequestUseCase{
-		generator:      generator,
-		publisher:      publisher,
-		cache:          cache,
-		grpcTarget:     grpcTarget,
-		callbackSecret: callbackSecret,
+) (*ProcessChatRequestUseCase, error) {
+	conn, err := grpc.NewClient(grpcTarget,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(staticCreds{secret: callbackSecret}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("grpc dial: %w", err)
 	}
+	return &ProcessChatRequestUseCase{
+		generator: generator,
+		publisher: publisher,
+		cache:     cache,
+		conn:      conn,
+		client:    pb.NewTokenServiceClient(conn),
+	}, nil
+}
+
+func (uc *ProcessChatRequestUseCase) Close() error {
+	return uc.conn.Close()
 }
 
 type staticCreds struct{ secret string }
@@ -59,17 +70,7 @@ func (uc *ProcessChatRequestUseCase) Execute(ctx context.Context, req shared.Cha
 }
 
 func (uc *ProcessChatRequestUseCase) streamTokens(ctx context.Context, req shared.ChatRequest) (string, error) {
-	conn, err := grpc.NewClient(uc.grpcTarget,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(staticCreds{secret: uc.callbackSecret}),
-	)
-	if err != nil {
-		return "", fmt.Errorf("grpc dial: %w", err)
-	}
-	defer conn.Close()
-
-	client := pb.NewTokenServiceClient(conn)
-	stream, err := client.DeliverTokens(ctx)
+	stream, err := uc.client.DeliverTokens(ctx)
 	if err != nil {
 		return "", fmt.Errorf("grpc stream: %w", err)
 	}

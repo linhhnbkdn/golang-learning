@@ -52,12 +52,12 @@ func newProcessChatRequest(
 	publisher usecase.IEventPublisher,
 	cache usecase.IConversationCache,
 	cfg config.Config,
-) *usecase.ProcessChatRequestUseCase {
+) (*usecase.ProcessChatRequestUseCase, error) {
 	grpcTarget := fmt.Sprintf("%s:%s", cfg.APIHost, cfg.GRPCPort)
 	return usecase.NewProcessChatRequest(generator, publisher, cache, grpcTarget, cfg.CallbackSecret)
 }
 
-func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
+func runWorker(lc fx.Lifecycle, w *consumer.Worker, uc *usecase.ProcessChatRequestUseCase, log *zap.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
@@ -70,7 +70,7 @@ func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
 		},
 		OnStop: func(_ context.Context) error {
 			cancel()
-			return nil
+			return uc.Close()
 		},
 	})
 }

@@ -78,6 +78,7 @@ func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatSt
 	httpSrv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 
 	grpcSrv := grpc.NewServer(
+		grpc.MaxConcurrentStreams(1000),
 		grpc.StreamInterceptor(controllergrpc.StreamAuthInterceptor(cfg.CallbackSecret)),
 	)
 	pb.RegisterTokenServiceServer(grpcSrv, ts)
