@@ -1,20 +1,21 @@
 # golang-learning
 
-A Go learning project culminating in a production-style event-driven LLM streaming chat API.
+A Go project for testing event-driven LLM streaming architecture at scale.
 
-## Architecture
+## Current Architecture
 
 ### Data Flow
 
 ```
-GET /history (HTTP)  ──────────────────────────────────────────► Redis / PostgreSQL
-POST /chat/:session_id (HTTP chunked stream)
+POST /chat/:session_id
   │
-  ├─ send msg ──► Kafka: chat.requests ──► Worker (LLM call) ──► Redis Pub/Sub publish
-  │                                                 │
-  └─ recv tokens ◄── Redis Pub/Sub subscribe ◄──────┘
-                                                     │
-                                         Persistence Worker ──► PostgreSQL
+  ├── API: ClaimOwner (Redis) + Register TokenHub + publish chat.requests (Kafka)
+  │
+  └── Worker: consume chat.requests → call LLM → gRPC stream tokens → API TokenHub
+                                                                          │
+                                                              API → NDJSON stream → Browser
+
+chat.completed (Kafka) → Persistence Worker → Redis GetHistory → PostgreSQL upsert
 ```
 
 ### Sequence Diagram
@@ -33,231 +34,236 @@ sequenceDiagram
         note over Client,PostgreSQL: Send message & stream tokens
         Client->>API: POST /chat/:session_id {"content": "..."}
         API->>API: ParseJWT(Authorization header)
-        API->>Redis: ClaimOwner SetNX(session_id, userID)
+        API->>Redis: ClaimOwner EVALSHA(session_id, userID)
         Redis-->>API: owned=true
-        API->>Redis: Subscribe(pubsub:session_id)
+        API->>API: TokenHub.Register(requestID)
         API->>Kafka: publish chat.requests
-        note over API,Client: HTTP 200 — Transfer-Encoding: chunked (connection stays open)
+        note over API,Client: HTTP 200 — NDJSON stream (connection stays open)
         Kafka->>Worker: consume chat.requests
+        Worker->>Worker: call LLM (mock: 20ms/token)
         loop each token
-            Worker->>Redis: Publish(pubsub:session_id, token)
-            Redis-->>API: token via subscription
-            API-->>Client: chunk {request_id, delta, done:false}
+            Worker->>API: gRPC DeliverTokens(requestID, delta)
+            API->>API: TokenHub.Deliver(requestID, token)
+            API-->>Client: {"request_id","delta","done":false}
         end
-        API-->>Client: chunk {request_id, delta:"", done:true}
-        API-->>Client: EOF (response closed)
+        API-->>Client: {"done":true}
     end
 
     rect rgb(255, 240, 230)
         note over Client,PostgreSQL: Persist to DB
-        Worker->>Redis: SaveMessage(user msg + full reply)
+        Worker->>Redis: SaveMessages(user msg + full reply)
         Worker->>Kafka: publish chat.completed
         Kafka->>Persistence: consume chat.completed
-        Persistence->>Redis: GetHistory(session_id)
+        Persistence->>Redis: GetHistory(session_id, last 20)
         Redis-->>Persistence: messages
-        Persistence->>PostgreSQL: SaveMessage (INSERT)
+        Persistence->>PostgreSQL: BulkSaveMessages (batch 500)
     end
 ```
 
-### Clean Architecture Rings
+### Services
+
+| Service | Role |
+|---|---|
+| **API** | Gin HTTP, JWT auth, NDJSON streaming, gRPC server (TokenHub) |
+| **Worker** | Kafka consumer, LLM call, gRPC client stream tokens to API |
+| **Persistence** | Kafka consumer on `chat.completed`, batch upsert to PostgreSQL |
+
+### Infrastructure Tuning (current)
+
+| Component | Config | Reason |
+|---|---|---|
+| Worker | 2 replicas, 2 CPU each | Kafka partition parallelism |
+| gRPC | `MaxConcurrentStreams=1000` | Handle concurrent token streams |
+| gRPC conn | Shared per worker (reused) | Eliminate per-request connection overhead |
+| Redis | Single-threaded (no io-threads) | Low ops/sec — threading overhead > benefit |
+| Redis ZRange | Last 20 messages | Prevent unbounded history reads |
+| Kafka | 2 partitions per topic | Match worker replica count |
+| Persistence batch | 500 events | Reduce DB round trips |
+| Locust | 1 master + 4 workers | Bypass Python GIL for load generation |
+
+### Performance Results
+
+| Metric | Value |
+|---|---|
+| RPS | ~800 |
+| Bottleneck | API CPU (83%) |
+| Worker CPU | ~30% (IO-bound, MockLLM sleeps) |
+| Redis CPU | ~17% (single-threaded) |
+| Kafka lag | ~744 messages (normal in-flight) |
+
+---
+
+## Planned Architecture
+
+Separating real-time streaming from persistence using dual Kafka topics with different producer configs.
+
+### Data Flow
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Frameworks & Drivers                                        │
-│  (framework/postgres, framework/redis, framework/llm)        │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │  Interface Adapters                                    │  │
-│  │  (adapter/controller, adapter/presenter, adapter/gateway)  │
-│  │  ┌──────────────────────────────────────────────────┐  │  │
-│  │  │  Use Cases                                       │  │  │
-│  │  │  (usecase/ + port interfaces)                    │  │  │
-│  │  │  ┌────────────────────────────────────────────┐  │  │  │
-│  │  │  │  Entities                                  │  │  │  │
-│  │  │  │  (entity/)                                 │  │  │  │
-│  │  │  └────────────────────────────────────────────┘  │  │  │
-│  │  └──────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
+LLM Worker: generate token
+  ├── publish stream-llm-fe   (linger=0ms, small batch)   → Streaming Worker
+  └── publish persistence-llm (linger=100ms, large batch) → Persistence Worker
+
+Streaming Worker:
+  consume stream-llm-fe
+  → Redis lookup: requestID → API instance address (cache in RAM)
+  → gRPC stream → correct API instance → Browser
+
+Persistence Worker:
+  consume persistence-llm
+  → buffer tokens per requestID in memory
+  → flush every 500 tokens OR 1 minute:
+      read DB for existing content per session (batch)
+      merge: db_content + buffer_content
+      bulk upsert PostgreSQL
+      clear buffer
+      commit Kafka offset
 ```
 
-**Services:**
-- **API** — Gin HTTP server, JWT auth, chunked HTTP streaming via Redis Pub/Sub
-- **Worker** — Kafka consumer, calls LLM, publishes tokens to Redis Pub/Sub + Kafka
-- **Persistence** — Kafka consumer on `chat.completed`, writes to PostgreSQL
+### Why Dual Topics
+
+| Topic | Optimization | Config |
+|---|---|---|
+| `stream-llm-fe` | Latency — token reaches browser fast | `linger.ms=0`, small batch |
+| `persistence-llm` | Throughput — efficient DB writes | `linger.ms=100`, large batch, compression |
+
+### Routing: Redis Callback
+
+With multiple API instances, Streaming Worker needs to know which instance holds the TokenHub for a given requestID:
+
+```
+API on request:   Redis.set(stream:callback:{requestID} → "api-1:50051", TTL=5min)
+Streaming Worker: RAM cache[requestID] hit? → use it
+                  RAM miss → Redis.get(requestID) → cache → gRPC to correct instance
+```
+
+### Persistence: Partial Save + Durability
+
+Tokens are flushed periodically — not waiting for `done` — so partial content is saved even if worker crashes mid-generation.
+
+```
+Worker crash at token 8/12:
+  tokens 1-8 already in persistence-llm Kafka → safe
+  Persistence flushes partial content to DB
+  User refresh → sees "Hello world how are" (partial but consistent with what they saw)
+
+Persistence crash + restart:
+  Kafka replay from last committed offset
+  Next flush: read DB (previous flushes) + buffer (replayed tokens) → merge → upsert
+```
+
+Upsert strategy — replace on conflict, not append:
+```sql
+INSERT INTO messages (session_id, request_id, role, content)
+VALUES (...)
+ON CONFLICT (request_id, role) DO UPDATE
+SET content = EXCLUDED.content
+```
+
+Idempotent on Kafka replay — overwriting with same or more complete content.
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| HTTP streaming | Gin (chunked transfer) |
+| HTTP streaming | Gin (NDJSON chunked transfer) |
+| Token delivery | gRPC client streaming (worker → API) |
 | Event bus | Kafka |
-| Token streaming | Redis Pub/Sub |
-| Cache / session state | Redis |
+| Session cache | Redis (sorted set, Lua ownership claim) |
 | Database | PostgreSQL + GORM |
 | Auth | JWT (golang-jwt/v5) |
 | DI | Uber fx |
-| Logging | Uber zap |
-| LLM | OpenAI-compatible (mock default) |
+| Logging | Uber zap + automaxprocs |
+| LLM | Mock (OpenAI-compatible interface) |
+| Load testing | Locust distributed (1 master + 4 workers) |
 
-## Prerequisites
-
-- Go 1.21+
-- Docker & Docker Compose
+---
 
 ## Setup
 
 ```bash
-# 1. Copy env config
 cp .env.example .env
 
-# 2. Start all services
-make up
+# Start full stack + Locust load test UI
+make benchmark     # http://localhost:8089
 
-# 3. Run database migrations
-make migrate
+# Start stack only (no Locust)
+make prod-up
+
+# Run DB migrations
+make prod-migrate
 ```
 
-## Running
-
-Open three terminals:
+## Commands
 
 ```bash
-make api          # HTTP server on :8000
-make worker       # LLM processing consumer
-make persistence  # Database persistence consumer
+make benchmark    # Full stack + Locust at http://localhost:8089
+make prod-up      # Start production stack
+make prod-down    # Stop production stack
+make token        # Generate JWT for user "li"
+make chat         # Send test message
+make history      # View session history (Redis)
+make history-db   # View session history (PostgreSQL)
 ```
 
-## Usage
+---
 
-```bash
-# Generate a JWT token for user "li"
-make token USER=li
+## API
 
-# Send a message and stream the response
-TOKEN=$(make token USER=li)
-curl -N -X POST http://localhost:8000/chat/my-session \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Tell me about Go channels"}'
+### POST `/chat/:session_id`
 
-# View chat history (Redis cache)
-make history SESSION=my-session
+Auth: `Authorization: Bearer <JWT>`
 
-# View chat history (PostgreSQL)
-make history-db SESSION=my-session
-```
-
-## API Endpoints
-
-### POST `/chat/:session_id` — send message & stream response
-
-Auth via `Authorization: Bearer <JWT>` header.
-
-Send a message, receive a chunked stream of token frames. Connection closes (EOF) when streaming finishes.
-
-**Request body:**
 ```json
+// Request
 {"content": "Tell me about Go channels"}
-```
 
-**Response — one JSON object per chunk:**
-```json
+// Response — NDJSON stream, one JSON per line
 {"request_id": "abc123", "delta": "Go ", "done": false}
 {"request_id": "abc123", "delta": "channels", "done": false}
 {"request_id": "abc123", "delta": "", "done": true}
 ```
 
-### Other HTTP endpoints
+### GET `/history/:session_id` — from Redis (last 20 messages)
+### GET `/history/:session_id/db` — from PostgreSQL
 
-All require `Authorization: Bearer <token>`.
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/history/:session_id` | Session history from Redis |
-| `GET` | `/history/:session_id/db` | Session history from PostgreSQL |
-
-## Security
-
-- **Session ownership** — first user to POST to a session claims it via Redis `SetNX`. Other users receive `403 Forbidden`.
-- **JWT auth** — all endpoints require a valid signed JWT in the `Authorization: Bearer` header.
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka broker address |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-| `DATABASE_URL` | `postgresql://app:app@localhost:5432/chatdb` | PostgreSQL connection URL |
-| `REDIS_TTL` | `86400` | Session TTL in seconds |
-| `LLM_PROVIDER` | `mock` | LLM provider (`mock` or `openai`) |
-| `OPENAI_API_KEY` | — | Required when `LLM_PROVIDER=openai` |
-| `JWT_SECRET` | — | Secret key for signing JWTs |
-| `PORT` | `8000` | HTTP server port |
+---
 
 ## Project Structure
 
 ```
 cmd/
-  api/              # HTTP + WebSocket server entry point (Gin + fx wiring)
-  worker/           # LLM consumer entry point
-  persistence/      # DB persistence consumer entry point
-  migrate/          # Database migration entry point (GORM AutoMigrate)
-  gentoken/         # JWT token generator CLI
+  api/          # HTTP server + gRPC server entry point
+  worker/       # LLM consumer entry point
+  persistence/  # DB persistence consumer entry point
+  migrate/      # Database migration
+  gentoken/     # JWT token generator CLI
 
 internal/
-  entity/           # Entities ring — pure business types, no framework tags
-    message.go      # Message, MessageRole
-    session.go      # Session
+  entity/       # Business types (Message, Session)
+  usecase/      # Business logic + port interfaces
+  adapter/
+    controller/ # Inbound: HTTP handlers, Kafka consumers, gRPC server
+    gateway/    # Outbound: Redis, PostgreSQL, Kafka implementations
+  framework/    # Infrastructure: DB/Redis/LLM connections
+  module/       # Logger factory
 
-  usecase/          # Use Cases ring — business logic + port interfaces
-    boundary.go     # Port interfaces (IPubSubStream, ISessionOwnerStore, ...)
-    send_message.go
-    get_history.go
-    process_chat_request.go
-    persist_session.go
-
-  adapter/          # Interface Adapters ring
-    controller/     # Inbound — parse input, call use cases
-      http/
-        handler/    # Gin HTTP handlers (chat stream + history endpoints)
-        middleware/ # JWT auth + ParseJWT helper
-      consumer/     # Kafka consumers (worker, persistence)
-    presenter/      # Format use case output → HTTP response
-      http/         # JSON view models (MessageView, SendMessagePresenter)
-    gateway/        # Outbound — implement port interfaces
-      store/        # PostgreSQL: MessageStore + GORM models
-      cache/        # Redis: ConversationCache, SessionOwnerStore, PubSubStreamImpl
-      broker/       # Kafka: EventPublisher
-
-  framework/        # Frameworks & Drivers ring — infrastructure setup only
-    postgres/       # GORM *gorm.DB connection factory
-    redis/          # go-redis client factory
-    llm/            # Mock LLM token generator
-
-  module/
-    logger/         # Zap logger factory
-
-config/             # Config loading from environment variables
-shared/             # Shared Kafka message schemas
+config/         # Environment config loading
+shared/         # Kafka message schemas (ChatRequest, ChatCompleted)
+proto/          # gRPC protobuf definitions (TokenService)
 ```
 
-## Extending to gRPC
+## Environment Variables
 
-The Clean Architecture structure makes adding gRPC straightforward — use cases are untouched:
-
-```
-adapter/
-  controller/
-    http/           # existing
-    ws/             # existing
-    grpc/           # add new gRPC handlers here
-  presenter/
-    http/           # existing
-    grpc/           # add new protobuf formatters here
-```
-
-## Build
-
-```bash
-make build      # Compiles all binaries to bin/
-```
+| Variable | Description |
+|---|---|
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker |
+| `REDIS_URL` | Redis connection |
+| `DATABASE_URL` | PostgreSQL connection |
+| `JWT_SECRET` | JWT signing secret |
+| `GRPC_PORT` | gRPC server port (default: 50051) |
+| `CALLBACK_SECRET` | Shared secret for worker→API gRPC auth |
+| `LLM_PROVIDER` | `mock` or `openai` |
+| `OPENAI_API_KEY` | Required when `LLM_PROVIDER=openai` |
