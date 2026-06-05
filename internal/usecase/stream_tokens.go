@@ -43,7 +43,16 @@ func (uc *StreamTokensUseCase) Execute(ctx context.Context, token shared.TokenEv
 		Delta:     token.Delta,
 		Done:      token.Done,
 	}); err != nil {
-		return err
+		// Conn có thể stale sau khi API restart — xóa stream + conn để force reconnect
+		uc.streams.Delete(token.RequestID)
+		uc.addrMap.Delete(token.RequestID)
+		addr, _ := uc.resolveAddr(ctx, token.RequestID)
+		if addr != "" {
+			uc.connMu.Lock()
+			delete(uc.connMap, addr)
+			uc.connMu.Unlock()
+		}
+		return fmt.Errorf("send failed (conn evicted, retry next token): %w", err)
 	}
 
 	if token.Done {
