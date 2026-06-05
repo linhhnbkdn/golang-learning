@@ -14,83 +14,87 @@ import (
 )
 
 const (
-	persistBatchSize    = 500
-	persistFlushTimeout = 2 * time.Second
+	persistTokenThreshold = 500
+	persistFlushInterval  = 1 * time.Minute
 )
 
-type kafkaReader interface {
-	FetchMessage(ctx context.Context) (kafka.Message, error)
-	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
-	Close() error
-}
-
-type batchPersister interface {
-	ExecuteBatch(ctx context.Context, batch []shared.ChatCompleted) error
-}
-
 type PersistenceWorker struct {
-	useCase      batchPersister
-	reader       kafkaReader
-	flushTimeout time.Duration
+	useCase *usecase.PersistSessionUseCase
+	reader  *kafka.Reader
 }
 
 func NewPersistenceWorker(cfg config.Config, useCase *usecase.PersistSessionUseCase) *PersistenceWorker {
 	return &PersistenceWorker{
-		useCase:      useCase,
-		flushTimeout: persistFlushTimeout,
+		useCase: useCase,
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:  cfg.KafkaBrokers,
 			GroupID:  "persistence-worker",
-			Topic:    "chat.completed",
-			MinBytes: 1,
+			Topic:    "persistence-llm",
+			MinBytes: 10e3,
 			MaxBytes: 10e6,
+			MaxWait:  500 * time.Millisecond,
 		}),
 	}
 }
 
 func (w *PersistenceWorker) Run(ctx context.Context) error {
 	defer w.reader.Close()
-	slog.Info("persistence worker started — listening on chat.completed")
+	slog.Info("persistence worker started — listening on persistence-llm")
 
-	for ctx.Err() == nil {
-		batch, msgs := w.fetchBatch(ctx)
-		if len(batch) == 0 {
-			continue
+	var pending []kafka.Message
+	ticker := time.NewTicker(persistFlushInterval)
+	defer ticker.Stop()
+
+	flush := func() {
+		if err := w.useCase.Flush(ctx); err != nil {
+			slog.Error("persistence flush failed", "err", err)
+			return
 		}
-		if err := w.useCase.ExecuteBatch(ctx, batch); err != nil {
-			slog.Error("bulk persist failed — not committing", "err", err, "count", len(batch))
-			continue
+		if len(pending) > 0 {
+			if err := w.reader.CommitMessages(ctx, pending...); err != nil {
+				slog.Error("persistence commit error", "err", err)
+			}
+			slog.Info("persistence flushed", "messages", len(pending))
+			pending = pending[:0]
 		}
-		if err := w.reader.CommitMessages(ctx, msgs...); err != nil {
-			slog.Error("persistence commit error", "err", err)
-		}
-		slog.Info("batch persisted", "count", len(batch))
 	}
-	return nil
-}
 
-func (w *PersistenceWorker) fetchBatch(ctx context.Context) ([]shared.ChatCompleted, []kafka.Message) {
-	deadline := time.Now().Add(w.flushTimeout)
-	var (
-		batch []shared.ChatCompleted
-		msgs  []kafka.Message
-	)
-
-	for len(batch) < persistBatchSize {
-		fetchCtx, cancel := context.WithDeadline(ctx, deadline)
+	for {
+		fetchCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		msg, err := w.reader.FetchMessage(fetchCtx)
 		cancel()
-		if err != nil {
-			break
-		}
-		var completed shared.ChatCompleted
-		if err := json.Unmarshal(msg.Value, &completed); err != nil {
-			slog.Error("persistence unmarshal error", "err", err)
-		} else {
-			batch = append(batch, completed)
-		}
-		msgs = append(msgs, msg)
-	}
 
-	return batch, msgs
+		if err != nil {
+			if ctx.Err() != nil {
+				flush()
+				return nil
+			}
+			select {
+			case <-ticker.C:
+				flush()
+			default:
+			}
+			continue
+		}
+
+		var token shared.TokenEvent
+		if err := json.Unmarshal(msg.Value, &token); err != nil {
+			slog.Error("persistence unmarshal error", "err", err)
+			pending = append(pending, msg)
+			continue
+		}
+
+		w.useCase.AddToken(token)
+		pending = append(pending, msg)
+
+		select {
+		case <-ticker.C:
+			flush()
+		default:
+			if w.useCase.ShouldFlush(persistTokenThreshold) {
+				flush()
+				ticker.Reset(persistFlushInterval)
+			}
+		}
+	}
 }

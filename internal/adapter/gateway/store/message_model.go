@@ -5,8 +5,8 @@ import "golang-learning/internal/entity"
 type MessageModel struct {
 	ID        uint         `gorm:"column:id;primaryKey;autoIncrement"`
 	SessionID string       `gorm:"column:session_id;not null"`
-	RequestID string       `gorm:"column:request_id;not null"`
-	Role      string       `gorm:"column:role;not null"`
+	RequestID string       `gorm:"column:request_id;not null;uniqueIndex:idx_request_role"`
+	Role      string       `gorm:"column:role;not null;uniqueIndex:idx_request_role"`
 	Content   string       `gorm:"column:content;not null"`
 	Session   SessionModel `gorm:"foreignKey:SessionID;references:SessionID"`
 }

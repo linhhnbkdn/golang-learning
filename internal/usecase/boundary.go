@@ -16,6 +16,12 @@ type IConversationCache interface {
 type IEventPublisher interface {
 	PublishRequest(ctx context.Context, req shared.ChatRequest) error
 	PublishCompleted(ctx context.Context, completed shared.ChatCompleted) error
+	PublishToken(ctx context.Context, token shared.TokenEvent) error
+}
+
+type ICallbackStore interface {
+	SetCallback(ctx context.Context, requestID, grpcAddr string) error
+	GetCallback(ctx context.Context, requestID string) (string, error)
 }
 
 type PubSubToken struct {
@@ -37,7 +43,9 @@ type ITokenHub interface {
 type IMessageStore interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
 	BulkSaveMessages(ctx context.Context, msgs []entity.Message) error
+	BulkUpsertMessages(ctx context.Context, msgs []entity.Message) error
 	GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error)
+	GetContentByRequestIDs(ctx context.Context, requestIDs []string) (map[string]string, error)
 }
 
 type ITokenGenerator interface {

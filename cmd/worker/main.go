@@ -7,9 +7,7 @@ import (
 	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/consumer"
 	"golang-learning/internal/adapter/gateway/broker"
-	"golang-learning/internal/adapter/gateway/cache"
 	"golang-learning/internal/framework/llm"
-	frameworkredis "golang-learning/internal/framework/redis"
 	"golang-learning/internal/module/logger"
 	"golang-learning/internal/usecase"
 
@@ -25,13 +23,10 @@ func main() {
 		fx.Provide(
 			config.Load,
 			logger.New,
-			frameworkredis.NewClient,
 			newTokenGenerator,
 			broker.NewEventPublisher,
-			cache.NewConversationCache,
-			func(c *cache.ConversationCacheImpl) usecase.IConversationCache { return c },
-			func(p *broker.EventPublisherImpl) usecase.IEventPublisher      { return p },
-			newProcessChatRequest,
+			func(p *broker.EventPublisherImpl) usecase.IEventPublisher { return p },
+			usecase.NewProcessChatRequest,
 			consumer.NewWorker,
 		),
 		fx.Invoke(runWorker),
@@ -47,17 +42,7 @@ func newTokenGenerator(cfg config.Config) (usecase.ITokenGenerator, error) {
 	}
 }
 
-func newProcessChatRequest(
-	generator usecase.ITokenGenerator,
-	publisher usecase.IEventPublisher,
-	cache usecase.IConversationCache,
-	cfg config.Config,
-) (*usecase.ProcessChatRequestUseCase, error) {
-	grpcTarget := fmt.Sprintf("%s:%s", cfg.APIHost, cfg.GRPCPort)
-	return usecase.NewProcessChatRequest(generator, publisher, cache, grpcTarget, cfg.CallbackSecret)
-}
-
-func runWorker(lc fx.Lifecycle, w *consumer.Worker, uc *usecase.ProcessChatRequestUseCase, log *zap.Logger) {
+func runWorker(lc fx.Lifecycle, w *consumer.Worker, log *zap.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
@@ -70,7 +55,7 @@ func runWorker(lc fx.Lifecycle, w *consumer.Worker, uc *usecase.ProcessChatReque
 		},
 		OnStop: func(_ context.Context) error {
 			cancel()
-			return uc.Close()
+			return nil
 		},
 	})
 }

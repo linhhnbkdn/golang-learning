@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/usecase"
 
@@ -13,23 +14,29 @@ import (
 )
 
 type ChatStreamHandler struct {
-	sendMessage *usecase.SendMessageUseCase
-	ownerStore  usecase.ISessionOwnerStore
-	hub         usecase.ITokenHub
-	log         *zap.Logger
+	sendMessage    *usecase.SendMessageUseCase
+	ownerStore     usecase.ISessionOwnerStore
+	hub            usecase.ITokenHub
+	callbackStore  usecase.ICallbackStore
+	grpcAddr       string
+	log            *zap.Logger
 }
 
 func NewChatStreamHandler(
 	sendMessage *usecase.SendMessageUseCase,
 	ownerStore usecase.ISessionOwnerStore,
 	hub usecase.ITokenHub,
+	callbackStore usecase.ICallbackStore,
+	cfg config.Config,
 	log *zap.Logger,
 ) *ChatStreamHandler {
 	return &ChatStreamHandler{
-		sendMessage: sendMessage,
-		ownerStore:  ownerStore,
-		hub:         hub,
-		log:         log,
+		sendMessage:   sendMessage,
+		ownerStore:    ownerStore,
+		hub:           hub,
+		callbackStore: callbackStore,
+		grpcAddr:      cfg.GRPCAdvertisedAddr,
+		log:           log,
 	}
 }
 
@@ -74,6 +81,10 @@ func (h *ChatStreamHandler) Stream(c *gin.Context) {
 	requestID := uuid.New().String()
 	tokenCh, cleanup := h.hub.Register(requestID)
 	defer cleanup()
+
+	if err := h.callbackStore.SetCallback(c.Request.Context(), requestID, h.grpcAddr); err != nil {
+		h.log.Error("set callback failed", zap.String("request_id", requestID), zap.Error(err))
+	}
 
 	out := &streamOutputPort{}
 	h.sendMessage.Execute(c.Request.Context(), sessionID, body.Content, requestID, out)

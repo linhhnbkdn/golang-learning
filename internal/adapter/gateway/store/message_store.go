@@ -56,6 +56,56 @@ func (s *MessageStoreImpl) BulkSaveMessages(ctx context.Context, msgs []entity.M
 	return s.db.WithContext(ctx).Omit("Session").Create(&rows).Error
 }
 
+func (s *MessageStoreImpl) BulkUpsertMessages(ctx context.Context, msgs []entity.Message) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	for _, m := range msgs {
+		seen[m.SessionID] = struct{}{}
+	}
+	sessions := make([]SessionModel, 0, len(seen))
+	for id := range seen {
+		sessions = append(sessions, SessionModel{SessionID: id})
+	}
+	if err := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Omit("Messages").
+		Create(&sessions).Error; err != nil {
+		return err
+	}
+
+	rows := make([]MessageModel, len(msgs))
+	for i, m := range msgs {
+		rows[i] = messageFromEntity(m)
+	}
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "request_id"}, {Name: "role"}},
+			DoUpdates: clause.AssignmentColumns([]string{"content"}),
+		}).
+		Omit("Session").
+		Create(&rows).Error
+}
+
+func (s *MessageStoreImpl) GetContentByRequestIDs(ctx context.Context, requestIDs []string) (map[string]string, error) {
+	if len(requestIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	var rows []MessageModel
+	if err := s.db.WithContext(ctx).
+		Where("request_id IN ? AND role = ?", requestIDs, "assistant").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(rows))
+	for _, r := range rows {
+		result[r.RequestID] = r.Content
+	}
+	return result, nil
+}
+
 func (s *MessageStoreImpl) GetHistory(ctx context.Context, sessionID string) ([]entity.Message, error) {
 	var rows []MessageModel
 	if err := s.db.WithContext(ctx).

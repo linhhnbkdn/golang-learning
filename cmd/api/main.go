@@ -41,9 +41,11 @@ func main() {
 			broker.NewEventPublisher,
 			cache.NewConversationCache,
 			cache.NewSessionOwnerStore,
+			cache.NewCallbackStore,
 			store.NewMessageStore,
 			asConversationCache,
 			asSessionOwnerStore,
+			asCallbackStore,
 			asMessageStore,
 			asEventPublisher,
 			hub.New,
@@ -60,6 +62,7 @@ func main() {
 
 func asConversationCache(c *cache.ConversationCacheImpl) usecase.IConversationCache { return c }
 func asSessionOwnerStore(s *cache.SessionOwnerStoreImpl) usecase.ISessionOwnerStore { return s }
+func asCallbackStore(s *cache.CallbackStoreImpl) usecase.ICallbackStore             { return s }
 func asMessageStore(s *store.MessageStoreImpl) usecase.IMessageStore                { return s }
 func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher         { return p }
 func asTokenHub(h *hub.TokenHub) usecase.ITokenHub                                  { return h }

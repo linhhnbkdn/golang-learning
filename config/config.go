@@ -15,9 +15,10 @@ type Config struct {
 	OpenAIAPIKey    string
 	JWTSecret       string
 	Port            string
-	CallbackSecret string
-	APIHost        string
-	GRPCPort       string
+	CallbackSecret     string
+	APIHost            string
+	GRPCPort           string
+	GRPCAdvertisedAddr string
 }
 
 func Load() Config {
@@ -41,19 +42,25 @@ func Load() Config {
 		grpcPort = "50051"
 	}
 
+	grpcAdvertisedAddr := os.Getenv("GRPC_ADVERTISED_ADDR")
+	if grpcAdvertisedAddr == "" {
+		grpcAdvertisedAddr = "api:" + grpcPort
+	}
+
 	brokers := strings.Split(os.Getenv("KAFKA_BOOTSTRAP_SERVERS"), ",")
 
 	return Config{
-		KafkaBrokers:    brokers,
-		RedisURL:        os.Getenv("REDIS_URL"),
-		DatabaseURL:     dbURL,
-		RedisTTL:        ttl,
-		LLMProvider:     os.Getenv("LLM_PROVIDER"),
-		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
-		JWTSecret:       os.Getenv("JWT_SECRET"),
-		Port:            port,
-		CallbackSecret: os.Getenv("CALLBACK_SECRET"),
-		APIHost:        os.Getenv("API_HOST"),
-		GRPCPort:       grpcPort,
+		KafkaBrokers:       brokers,
+		RedisURL:           os.Getenv("REDIS_URL"),
+		DatabaseURL:        dbURL,
+		RedisTTL:           ttl,
+		LLMProvider:        os.Getenv("LLM_PROVIDER"),
+		OpenAIAPIKey:       os.Getenv("OPENAI_API_KEY"),
+		JWTSecret:          os.Getenv("JWT_SECRET"),
+		Port:               port,
+		CallbackSecret:     os.Getenv("CALLBACK_SECRET"),
+		APIHost:            os.Getenv("API_HOST"),
+		GRPCPort:           grpcPort,
+		GRPCAdvertisedAddr: grpcAdvertisedAddr,
 	}
 }

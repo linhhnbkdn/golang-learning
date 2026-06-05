@@ -12,6 +12,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       GIN_MODE: release
       GRPC_PORT: "50051"
+      GRPC_ADVERTISED_ADDR: "api:50051"
     dns:
       - "127.0.0.11"
     depends_on:
@@ -30,6 +31,34 @@ services:
         reservations:
           cpus: "2.0"
           memory: 512M
+
+  streaming-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: streaming-worker
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      API_HOST: api
+      GRPC_PORT: "50051"
+      CALLBACK_SECRET: ${CALLBACK_SECRET:-secret}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 128M
 
   llm-request-worker:
     build:

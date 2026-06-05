@@ -33,3 +33,11 @@ type ChatCompleted struct {
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id"`
 }
+
+type TokenEvent struct {
+	RequestID   string `json:"request_id"`
+	SessionID   string `json:"session_id"`
+	UserMessage string `json:"user_message"`
+	Delta       string `json:"delta"`
+	Done        bool   `json:"done"`
+}
