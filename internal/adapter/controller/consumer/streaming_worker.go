@@ -85,7 +85,18 @@ func (w *StreamingWorker) route(ctx context.Context, pt pendingToken) {
 	}
 	w.mu.Unlock()
 
-	ch <- pt
+	select {
+	case ch <- pt:
+	default:
+		// channel đầy — offload sang goroutine riêng, consumer loop không block
+		go func() {
+			select {
+			case ch <- pt:
+			case <-ctx.Done():
+				_ = w.reader.CommitMessages(context.Background(), pt.msg)
+			}
+		}()
+	}
 }
 
 func (w *StreamingWorker) processRequest(ctx context.Context, requestID string, ch chan pendingToken) {

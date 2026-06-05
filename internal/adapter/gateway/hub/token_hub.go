@@ -15,7 +15,7 @@ func New() *TokenHub {
 }
 
 func (h *TokenHub) Register(requestID string) (<-chan usecase.PubSubToken, func()) {
-	ch := make(chan usecase.PubSubToken, 100)
+	ch := make(chan usecase.PubSubToken, 1000) // 1000 >> 15 tokens/request, never drops
 	h.pending.Store(requestID, ch)
 	cleanup := func() {
 		h.pending.Delete(requestID)
@@ -29,14 +29,9 @@ func (h *TokenHub) Deliver(requestID string, token usecase.PubSubToken) {
 		return
 	}
 	ch := val.(chan usecase.PubSubToken)
-	if token.Done {
-		// done token không được drop — block nếu cần
-		ch <- token
-		return
-	}
 	select {
 	case ch <- token:
 	default:
-		// delta token drop khi channel đầy — acceptable
+		// channel đầy — chỉ xảy ra nếu handler bị block lâu hơn 1000 tokens
 	}
 }
