@@ -27,12 +27,13 @@ func NewStreamingWorker(cfg config.Config, useCase *usecase.StreamTokensUseCase)
 		useCase:  useCase,
 		channels: make(map[string]chan shared.TokenEvent),
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:  cfg.KafkaBrokers,
-			GroupID:  "streaming-worker",
-			Topic:    "stream-llm-fe",
-			MinBytes: 1,
-			MaxBytes: 10e6,
-			MaxWait:  10 * time.Millisecond,
+			Brokers:        cfg.KafkaBrokers,
+			GroupID:        "streaming-worker",
+			Topic:          "stream-llm-fe",
+			MinBytes:       1,
+			MaxBytes:       10e6,
+			MaxWait:        10 * time.Millisecond,
+			CommitInterval: time.Second, // batch commit — không block fetch loop
 		}),
 	}
 }

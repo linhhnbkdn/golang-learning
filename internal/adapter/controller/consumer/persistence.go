@@ -29,12 +29,13 @@ func NewPersistenceWorker(cfg config.Config, useCase *usecase.PersistSessionUseC
 	return &PersistenceWorker{
 		useCase: useCase,
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:  cfg.KafkaBrokers,
-			GroupID:  "persistence-worker",
-			Topic:    "persistence-llm",
-			MinBytes: 10e3,
-			MaxBytes: 10e6,
-			MaxWait:  500 * time.Millisecond,
+			Brokers:        cfg.KafkaBrokers,
+			GroupID:        "persistence-worker",
+			Topic:          "persistence-llm",
+			MinBytes:       10e3,
+			MaxBytes:       10e6,
+			MaxWait:        500 * time.Millisecond,
+			CommitInterval: time.Second,
 		}),
 	}
 }

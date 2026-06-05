@@ -25,12 +25,13 @@ func NewWorker(cfg config.Config, useCase *usecase.ProcessChatRequestUseCase) *W
 		useCase:     useCase,
 		concurrency: runtime.NumCPU() * 50,
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:  cfg.KafkaBrokers,
-			GroupID:  "llm-worker",
-			Topic:    "chat.requests",
-			MinBytes: 10e3,
-			MaxBytes: 10e6,
-			MaxWait:  50 * time.Millisecond,
+			Brokers:        cfg.KafkaBrokers,
+			GroupID:        "llm-worker",
+			Topic:          "chat.requests",
+			MinBytes:       10e3,
+			MaxBytes:       10e6,
+			MaxWait:        50 * time.Millisecond,
+			CommitInterval: time.Second,
 		}),
 	}
 }
