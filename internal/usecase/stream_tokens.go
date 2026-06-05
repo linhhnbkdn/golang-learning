@@ -16,28 +16,24 @@ type StreamTokensUseCase struct {
 	callbackStore ICallbackStore
 	secret        string
 
-	addrMu  sync.RWMutex
-	addrMap map[string]string // requestID → grpc addr
+	streams sync.Map // requestID → pb.TokenService_DeliverTokensClient
+	addrMap sync.Map // requestID → string (grpc addr RAM cache)
 
 	connMu  sync.RWMutex
-	connMap map[string]*grpc.ClientConn // addr → conn
-
-	streamMu  sync.Mutex
-	streamMap map[string]pb.TokenService_DeliverTokensClient // requestID → stream
+	connMap map[string]*grpc.ClientConn // addr → shared conn
 }
 
 func NewStreamTokens(callbackStore ICallbackStore, secret string) *StreamTokensUseCase {
 	return &StreamTokensUseCase{
 		callbackStore: callbackStore,
 		secret:        secret,
-		addrMap:       make(map[string]string),
 		connMap:       make(map[string]*grpc.ClientConn),
-		streamMap:     make(map[string]pb.TokenService_DeliverTokensClient),
 	}
 }
 
+// Execute được gọi từ 1 goroutine duy nhất per requestID — không cần lock trên stream.
 func (uc *StreamTokensUseCase) Execute(ctx context.Context, token shared.TokenEvent) error {
-	stream, err := uc.getStream(ctx, token.RequestID)
+	stream, err := uc.getOrOpenStream(ctx, token.RequestID)
 	if err != nil {
 		return err
 	}
@@ -52,17 +48,15 @@ func (uc *StreamTokensUseCase) Execute(ctx context.Context, token shared.TokenEv
 
 	if token.Done {
 		_, _ = stream.CloseAndRecv()
-		uc.cleanup(token.RequestID)
+		uc.streams.Delete(token.RequestID)
+		uc.addrMap.Delete(token.RequestID)
 	}
 	return nil
 }
 
-func (uc *StreamTokensUseCase) getStream(ctx context.Context, requestID string) (pb.TokenService_DeliverTokensClient, error) {
-	uc.streamMu.Lock()
-	defer uc.streamMu.Unlock()
-
-	if s, ok := uc.streamMap[requestID]; ok {
-		return s, nil
+func (uc *StreamTokensUseCase) getOrOpenStream(ctx context.Context, requestID string) (pb.TokenService_DeliverTokensClient, error) {
+	if s, ok := uc.streams.Load(requestID); ok {
+		return s.(pb.TokenService_DeliverTokensClient), nil
 	}
 
 	addr, err := uc.resolveAddr(ctx, requestID)
@@ -75,32 +69,24 @@ func (uc *StreamTokensUseCase) getStream(ctx context.Context, requestID string) 
 		return nil, fmt.Errorf("grpc conn: %w", err)
 	}
 
-	client := pb.NewTokenServiceClient(conn)
-	stream, err := client.DeliverTokens(ctx)
+	stream, err := pb.NewTokenServiceClient(conn).DeliverTokens(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("grpc stream: %w", err)
 	}
 
-	uc.streamMap[requestID] = stream
+	uc.streams.Store(requestID, stream)
 	return stream, nil
 }
 
 func (uc *StreamTokensUseCase) resolveAddr(ctx context.Context, requestID string) (string, error) {
-	uc.addrMu.RLock()
-	addr, ok := uc.addrMap[requestID]
-	uc.addrMu.RUnlock()
-	if ok {
-		return addr, nil
+	if addr, ok := uc.addrMap.Load(requestID); ok {
+		return addr.(string), nil
 	}
-
 	addr, err := uc.callbackStore.GetCallback(ctx, requestID)
 	if err != nil {
 		return "", err
 	}
-
-	uc.addrMu.Lock()
-	uc.addrMap[requestID] = addr
-	uc.addrMu.Unlock()
+	uc.addrMap.Store(requestID, addr)
 	return addr, nil
 }
 
@@ -124,16 +110,6 @@ func (uc *StreamTokensUseCase) getConn(addr string) (*grpc.ClientConn, error) {
 	uc.connMap[addr] = conn
 	uc.connMu.Unlock()
 	return conn, nil
-}
-
-func (uc *StreamTokensUseCase) cleanup(requestID string) {
-	uc.addrMu.Lock()
-	delete(uc.addrMap, requestID)
-	uc.addrMu.Unlock()
-
-	uc.streamMu.Lock()
-	delete(uc.streamMap, requestID)
-	uc.streamMu.Unlock()
 }
 
 type streamCreds struct{ secret string }
