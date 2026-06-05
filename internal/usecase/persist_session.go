@@ -11,7 +11,7 @@ import (
 type tokenBuffer struct {
 	sessionID   string
 	userMessage string
-	content     string
+	content     string // delta tokens kể từ lần flush trước
 }
 
 type PersistSessionUseCase struct {
@@ -50,44 +50,42 @@ func (uc *PersistSessionUseCase) ShouldFlush(threshold int) bool {
 	return uc.count >= threshold
 }
 
+// Flush: snapshot buffer → đọc DB existing content → merge → upsert → clear buffer
 func (uc *PersistSessionUseCase) Flush(ctx context.Context) error {
 	uc.mu.Lock()
-	snapshot := uc.buffers
+	if len(uc.buffers) == 0 {
+		uc.mu.Unlock()
+		return nil
+	}
+	snapshot := make(map[string]*tokenBuffer, len(uc.buffers))
+	for id, buf := range uc.buffers {
+		snapshot[id] = &tokenBuffer{
+			sessionID:   buf.sessionID,
+			userMessage: buf.userMessage,
+			content:     buf.content,
+		}
+	}
+	// Clear buffer sau khi snapshot
 	uc.buffers = make(map[string]*tokenBuffer)
 	uc.count = 0
 	uc.mu.Unlock()
 
-	if len(snapshot) == 0 {
-		return nil
-	}
-
+	// Đọc DB để lấy content hiện tại của assistant
 	requestIDs := make([]string, 0, len(snapshot))
 	for id := range snapshot {
 		requestIDs = append(requestIDs, id)
 	}
-
 	existing, err := uc.store.GetContentByRequestIDs(ctx, requestIDs)
 	if err != nil {
 		return err
 	}
 
-	var msgs []entity.Message
+	msgs := make([]entity.Message, 0, len(snapshot)*2)
 	for requestID, buf := range snapshot {
-		prev := existing[requestID]
-		fullContent := prev + buf.content
-
-		msgs = append(msgs, entity.Message{
-			SessionID: buf.sessionID,
-			RequestID: requestID,
-			Role:      entity.RoleUser,
-			Content:   buf.userMessage,
-		})
-		msgs = append(msgs, entity.Message{
-			SessionID: buf.sessionID,
-			RequestID: requestID,
-			Role:      entity.RoleAssistant,
-			Content:   fullContent,
-		})
+		msgs = append(msgs,
+			entity.Message{SessionID: buf.sessionID, RequestID: requestID, Role: entity.RoleUser, Content: buf.userMessage},
+			entity.Message{SessionID: buf.sessionID, RequestID: requestID, Role: entity.RoleAssistant, Content: existing[requestID] + buf.content},
+		)
 	}
 
 	return uc.store.BulkUpsertMessages(ctx, msgs)

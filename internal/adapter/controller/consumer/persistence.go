@@ -15,7 +15,7 @@ import (
 
 const (
 	persistTokenThreshold = 500
-	persistFlushInterval  = 1 * time.Minute
+	persistFlushInterval  = 30 * time.Second
 )
 
 type PersistenceWorker struct {
@@ -41,60 +41,55 @@ func (w *PersistenceWorker) Run(ctx context.Context) error {
 	defer w.reader.Close()
 	slog.Info("persistence worker started — listening on persistence-llm")
 
-	var pending []kafka.Message
-	ticker := time.NewTicker(persistFlushInterval)
-	defer ticker.Stop()
-
-	flush := func() {
-		if err := w.useCase.Flush(ctx); err != nil {
-			slog.Error("persistence flush failed", "err", err)
-			return
-		}
-		if len(pending) > 0 {
-			if err := w.reader.CommitMessages(ctx, pending...); err != nil {
-				slog.Error("persistence commit error", "err", err)
-			}
-			slog.Info("persistence flushed", "messages", len(pending))
-			pending = pending[:0]
-		}
-	}
+	// Flusher goroutine: không block consumer
+	go w.runFlusher(ctx)
 
 	for {
-		fetchCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-		msg, err := w.reader.FetchMessage(fetchCtx)
-		cancel()
-
+		msg, err := w.reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
-				flush()
 				return nil
 			}
-			select {
-			case <-ticker.C:
-				flush()
-			default:
-			}
+			slog.Error("persistence read error", "err", err)
 			continue
+		}
+
+		if err := w.reader.CommitMessages(ctx, msg); err != nil {
+			slog.Error("persistence commit error", "err", err)
 		}
 
 		var token shared.TokenEvent
 		if err := json.Unmarshal(msg.Value, &token); err != nil {
 			slog.Error("persistence unmarshal error", "err", err)
-			pending = append(pending, msg)
 			continue
 		}
 
 		w.useCase.AddToken(token)
-		pending = append(pending, msg)
 
-		select {
-		case <-ticker.C:
-			flush()
-		default:
-			if w.useCase.ShouldFlush(persistTokenThreshold) {
-				flush()
-				ticker.Reset(persistFlushInterval)
-			}
+		if w.useCase.ShouldFlush(persistTokenThreshold) {
+			go w.flush(ctx)
 		}
 	}
+}
+
+func (w *PersistenceWorker) runFlusher(ctx context.Context) {
+	ticker := time.NewTicker(persistFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			w.flush(context.Background())
+			return
+		case <-ticker.C:
+			w.flush(ctx)
+		}
+	}
+}
+
+func (w *PersistenceWorker) flush(ctx context.Context) {
+	if err := w.useCase.Flush(ctx); err != nil {
+		slog.Error("persistence flush failed", "err", err)
+		return
+	}
+	slog.Info("persistence flushed")
 }
