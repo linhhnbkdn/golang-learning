@@ -4,8 +4,7 @@ import time
 import uuid
 
 import jwt
-from locust import HttpUser, between, events, task
-from locust.clients import ResponseContextManager
+from locust import HttpUser, between, task
 
 JWT_SECRET = os.getenv("JWT_SECRET", "secret")
 
@@ -55,19 +54,10 @@ class ChatUser(HttpUser):
                 except Exception:
                     continue
 
-            elapsed_ms = (time.perf_counter() - start) * 1000
-
             if not got_done:
                 resp.failure("stream ended without done=true")
                 return
 
-            # Fire manual event để Locust record đúng full streaming time
-            events.request.fire(
-                request_type="POST",
-                name="/chat/:session_id [full-stream]",
-                response_time=elapsed_ms,
-                response_length=0,
-                exception=None,
-                context={},
-            )
+            # Override response time = full stream duration
+            resp.request_meta["response_time"] = (time.perf_counter() - start) * 1000
             resp.success()
