@@ -29,9 +29,15 @@ type ChatResponse struct {
 	FinishReason *string `json:"finish_reason"`
 }
 
+type ChatCompletedMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ChatCompleted struct {
-	SessionID string `json:"session_id"`
-	RequestID string `json:"request_id"`
+	SessionID string                 `json:"session_id"`
+	RequestID string                 `json:"request_id"`
+	Messages  []ChatCompletedMessage `json:"messages"`
 }
 
 type TokenEvent struct {

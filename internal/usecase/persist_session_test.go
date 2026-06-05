@@ -11,25 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type mockCache struct {
-	history  map[string][]entity.Message
-	deleted  []string
-}
-
-func (m *mockCache) SaveMessage(_ context.Context, msg entity.Message) error {
-	m.history[msg.SessionID] = append(m.history[msg.SessionID], msg)
-	return nil
-}
-
-func (m *mockCache) GetHistory(_ context.Context, sessionID string) ([]entity.Message, error) {
-	return m.history[sessionID], nil
-}
-
-func (m *mockCache) DeleteSession(_ context.Context, sessionID string) error {
-	m.deleted = append(m.deleted, sessionID)
-	return nil
-}
-
 type mockStore struct {
 	saved []entity.Message
 	bulk  [][]entity.Message
@@ -49,26 +30,27 @@ func (m *mockStore) GetHistory(_ context.Context, _ string) ([]entity.Message, e
 	return nil, nil
 }
 
-func TestExecuteBatch_SavesMatchingMessages(t *testing.T) {
-	cache := &mockCache{
-		history: map[string][]entity.Message{
-			"sess-1": {
-				{SessionID: "sess-1", RequestID: "req-1", Role: entity.RoleUser, Content: "hi"},
-				{SessionID: "sess-1", RequestID: "req-1", Role: entity.RoleAssistant, Content: "hello"},
-				{SessionID: "sess-1", RequestID: "req-old", Role: entity.RoleUser, Content: "old"},
-			},
-			"sess-2": {
-				{SessionID: "sess-2", RequestID: "req-2", Role: entity.RoleUser, Content: "hey"},
-				{SessionID: "sess-2", RequestID: "req-2", Role: entity.RoleAssistant, Content: "hi there"},
-			},
-		},
-	}
+func TestExecuteBatch_SavesMessagesFromEvent(t *testing.T) {
 	store := &mockStore{}
-	uc := NewPersistSession(cache, store)
+	uc := NewPersistSession(store)
 
 	batch := []shared.ChatCompleted{
-		{SessionID: "sess-1", RequestID: "req-1"},
-		{SessionID: "sess-2", RequestID: "req-2"},
+		{
+			SessionID: "sess-1",
+			RequestID: "req-1",
+			Messages: []shared.ChatCompletedMessage{
+				{Role: "user", Content: "hi"},
+				{Role: "assistant", Content: "hello"},
+			},
+		},
+		{
+			SessionID: "sess-2",
+			RequestID: "req-2",
+			Messages: []shared.ChatCompletedMessage{
+				{Role: "user", Content: "hey"},
+				{Role: "assistant", Content: "hi there"},
+			},
+		},
 	}
 
 	err := uc.ExecuteBatch(context.Background(), batch)
@@ -76,20 +58,32 @@ func TestExecuteBatch_SavesMatchingMessages(t *testing.T) {
 
 	require.Len(t, store.bulk, 1, "must call BulkSaveMessages once")
 	saved := store.bulk[0]
-	assert.Len(t, saved, 4, "2 messages per session, old request excluded")
+	assert.Len(t, saved, 4, "2 messages per session")
 
-	for _, msg := range saved {
-		assert.NotEqual(t, "req-old", msg.RequestID, "must not save old request messages")
-	}
-
-	assert.ElementsMatch(t, []string{"sess-1", "sess-2"}, cache.deleted, "must delete Redis cache for each session after save")
+	assert.Equal(t, entity.RoleUser, saved[0].Role)
+	assert.Equal(t, "hi", saved[0].Content)
+	assert.Equal(t, "sess-1", saved[0].SessionID)
+	assert.Equal(t, "req-1", saved[0].RequestID)
 }
 
 func TestExecuteBatch_EmptyBatch(t *testing.T) {
 	store := &mockStore{}
-	uc := NewPersistSession(&mockCache{history: map[string][]entity.Message{}}, store)
+	uc := NewPersistSession(store)
 
 	err := uc.ExecuteBatch(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, store.bulk, "must not call BulkSaveMessages on empty batch")
+}
+
+func TestExecuteBatch_EmptyMessages(t *testing.T) {
+	store := &mockStore{}
+	uc := NewPersistSession(store)
+
+	batch := []shared.ChatCompleted{
+		{SessionID: "sess-1", RequestID: "req-1", Messages: nil},
+	}
+
+	err := uc.ExecuteBatch(context.Background(), batch)
+	require.NoError(t, err)
+	assert.Empty(t, store.bulk, "must not call BulkSaveMessages when no messages in event")
 }

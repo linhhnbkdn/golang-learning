@@ -49,7 +49,7 @@ func (r *mockReader) Close() error { return nil }
 // --- fetchBatch tests ---
 
 func TestFetchBatch_StopsAtBatchSize(t *testing.T) {
-	payloads := make([]shared.ChatCompleted, 60)
+	payloads := make([]shared.ChatCompleted, persistBatchSize+50)
 	for i := range payloads {
 		payloads[i] = shared.ChatCompleted{SessionID: "s", RequestID: "r"}
 	}
@@ -61,7 +61,7 @@ func TestFetchBatch_StopsAtBatchSize(t *testing.T) {
 
 	batch, _ := w.fetchBatch(context.Background())
 
-	require.Len(t, batch, persistBatchSize, "must flush at exactly 50")
+	require.Len(t, batch, persistBatchSize, "must stop at batch size limit")
 }
 
 func TestFetchBatch_FlushesOnTimeout(t *testing.T) {
