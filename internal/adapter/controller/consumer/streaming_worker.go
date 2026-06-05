@@ -14,7 +14,7 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 )
 
-// streamToken chỉ chứa fields cần thiết cho gRPC delivery — bỏ UserMessage và SessionID
+// streamToken chỉ chứa fields cần thiết cho gRPC delivery
 type streamToken struct {
 	RequestID string `json:"request_id"`
 	Delta     string `json:"delta"`
@@ -93,16 +93,28 @@ func (w *StreamingWorker) processRequest(ctx context.Context, requestID string, 
 		w.mu.Unlock()
 	}()
 
-	for token := range ch {
-		if err := w.useCase.Execute(ctx, shared.TokenEvent{
-			RequestID: token.RequestID,
-			Delta:     token.Delta,
-			Done:      token.Done,
-		}); err != nil {
-			slog.Error("streaming worker deliver error", "err", err, "request_id", requestID)
-		}
-		if token.Done {
-			slog.Info("streaming worker request done", "request_id", requestID)
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case token := <-ch:
+			if err := w.useCase.Execute(ctx, shared.TokenEvent{
+				RequestID: token.RequestID,
+				Delta:     token.Delta,
+				Done:      token.Done,
+			}); err != nil {
+				slog.Error("streaming worker deliver error", "err", err, "request_id", requestID)
+			}
+			if token.Done {
+				slog.Info("streaming worker request done", "request_id", requestID)
+				return
+			}
+			timer.Reset(30 * time.Second)
+		case <-timer.C:
+			slog.Warn("streaming worker request timeout", "request_id", requestID)
+			return
+		case <-ctx.Done():
 			return
 		}
 	}
