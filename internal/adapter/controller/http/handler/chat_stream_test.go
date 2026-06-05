@@ -37,38 +37,25 @@ func (m *mockOwnerStore) GetOwner(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
 
-type mockPubSub struct {
+type mockTokenHub struct {
 	tokens []usecase.PubSubToken
 }
 
-func (m *mockPubSub) Publish(_ context.Context, _, _, _ string, _ bool) error {
-	return nil
-}
-
-func (m *mockPubSub) Subscribe(_ context.Context, _ string) (<-chan usecase.PubSubToken, func(), error) {
+func (m *mockTokenHub) Register(_ string) (<-chan usecase.PubSubToken, func()) {
 	ch := make(chan usecase.PubSubToken, len(m.tokens))
 	for _, t := range m.tokens {
 		ch <- t
 	}
 	close(ch)
-	cleanup := func() {}
-	return ch, cleanup, nil
+	return ch, func() {}
 }
 
-type mockPubSubError struct{}
+func (m *mockTokenHub) Deliver(_ string, _ usecase.PubSubToken) {}
 
-func (m *mockPubSubError) Publish(_ context.Context, _, _, _ string, _ bool) error {
-	return nil
-}
-
-func (m *mockPubSubError) Subscribe(_ context.Context, _ string) (<-chan usecase.PubSubToken, func(), error) {
-	return nil, nil, errors.New("redis unavailable")
-}
-
-type mockEventPublisher struct{}
+type mockEventPublisher struct{ err error }
 
 func (m *mockEventPublisher) PublishRequest(_ context.Context, _ shared.ChatRequest) error {
-	return nil
+	return m.err
 }
 
 func (m *mockEventPublisher) PublishCompleted(_ context.Context, _ shared.ChatCompleted) error {
@@ -81,22 +68,18 @@ func newTestRouter(tokens []usecase.PubSubToken, owned bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
 	ownerStore := &mockOwnerStore{owned: owned}
-	pubSub := &mockPubSub{tokens: tokens}
+	hub := &mockTokenHub{tokens: tokens}
 	publisher := &mockEventPublisher{}
-	sendMessage := usecase.NewSendMessage(publisher)
+	sendMessage := usecase.NewSendMessage(publisher, "test-api:50051")
 
-	h := handler.NewChatStreamHandler(sendMessage, ownerStore, pubSub, zap.NewNop())
+	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, zap.NewNop())
 
 	r := gin.New()
-
-	// inline middleware that injects a static user ID
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.UserIDKey, "user1")
 		c.Next()
 	})
-
 	r.POST("/chat/:session_id", h.Stream)
-
 	return r
 }
 
@@ -173,15 +156,15 @@ func TestChatStreamHandler_BadRequestOnEmptyContent(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestChatStreamHandler_InternalErrorOnSubscribeFailure(t *testing.T) {
+func TestChatStreamHandler_InternalErrorOnPublishFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	ownerStore := &mockOwnerStore{owned: true}
-	pubSub := &mockPubSubError{}
-	publisher := &mockEventPublisher{}
-	sendMessage := usecase.NewSendMessage(publisher)
+	hub := &mockTokenHub{}
+	publisher := &mockEventPublisher{err: errors.New("kafka unavailable")}
+	sendMessage := usecase.NewSendMessage(publisher, "test-api:50051")
 
-	h := handler.NewChatStreamHandler(sendMessage, ownerStore, pubSub, zap.NewNop())
+	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, zap.NewNop())
 
 	r := gin.New()
 	r.Use(func(c *gin.Context) {

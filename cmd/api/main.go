@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	_ "go.uber.org/automaxprocs"
 
@@ -68,7 +69,9 @@ func asEventPublisher(p *broker.EventPublisherImpl) usecase.IEventPublisher     
 func asTokenHub(h *hub.TokenHub) usecase.ITokenHub                                  { return h }
 
 func newSendMessage(publisher usecase.IEventPublisher, cfg config.Config) *usecase.SendMessageUseCase {
-	return usecase.NewSendMessage(publisher, "")
+	hostname, _ := os.Hostname()
+	callbackAddr := fmt.Sprintf("%s:%s", hostname, cfg.GRPCPort)
+	return usecase.NewSendMessage(publisher, callbackAddr)
 }
 
 func startServer(lc fx.Lifecycle, h *handler.ChatHandler, stream *handler.ChatStreamHandler, ts *controllergrpc.TokenServer, cfg config.Config, log *zap.Logger) {
