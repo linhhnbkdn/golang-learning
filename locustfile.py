@@ -5,6 +5,7 @@ import uuid
 
 import jwt
 from locust import HttpUser, between, task
+from requests.adapters import HTTPAdapter
 
 JWT_SECRET = os.getenv("JWT_SECRET", "secret")
 
@@ -21,6 +22,7 @@ class ChatUser(HttpUser):
     wait_time = between(1, 3)
 
     def on_start(self):
+        self.client.mount("http://", HTTPAdapter(pool_connections=100, pool_maxsize=500))
         self.uid = str(uuid.uuid4())[:8]
         self.session_id = f"bench-{self.uid}"
         self.token = make_token(self.uid)
