@@ -29,8 +29,14 @@ func (h *TokenHub) Deliver(requestID string, token usecase.PubSubToken) {
 		return
 	}
 	ch := val.(chan usecase.PubSubToken)
+	if token.Done {
+		// done token không được drop — block nếu cần
+		ch <- token
+		return
+	}
 	select {
 	case ch <- token:
 	default:
+		// delta token drop khi channel đầy — acceptable
 	}
 }

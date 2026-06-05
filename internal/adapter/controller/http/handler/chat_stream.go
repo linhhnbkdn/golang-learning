@@ -100,21 +100,27 @@ func (h *ChatStreamHandler) Stream(c *gin.Context) {
 
 	enc := json.NewEncoder(c.Writer)
 	flusher, canFlush := c.Writer.(http.Flusher)
+	reqCtx := c.Request.Context()
 
-	for token := range tokenCh {
-		chunk := tokenChunk{
-			RequestID: token.RequestID,
-			Delta:     token.Delta,
-			Done:      token.Done,
-		}
-		if err := enc.Encode(chunk); err != nil {
+	for {
+		select {
+		case <-reqCtx.Done():
 			return
-		}
-		if canFlush {
-			flusher.Flush()
-		}
-		if token.Done {
-			return
+		case token := <-tokenCh:
+			chunk := tokenChunk{
+				RequestID: token.RequestID,
+				Delta:     token.Delta,
+				Done:      token.Done,
+			}
+			if err := enc.Encode(chunk); err != nil {
+				return
+			}
+			if canFlush {
+				flusher.Flush()
+			}
+			if token.Done {
+				return
+			}
 		}
 	}
 }
