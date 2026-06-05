@@ -77,7 +77,7 @@ func (w *StreamingWorker) route(ctx context.Context, token streamToken) {
 	w.mu.Lock()
 	ch, exists := w.channels[token.RequestID]
 	if !exists {
-		ch = make(chan streamToken, 4)
+		ch = make(chan streamToken, 32)
 		w.channels[token.RequestID] = ch
 		go w.processRequest(ctx, token.RequestID, ch)
 	}
