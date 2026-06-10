@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang-learning/config"
 	"golang-learning/internal/adapter/controller/http/handler"
 	"golang-learning/internal/adapter/controller/http/middleware"
 	"golang-learning/internal/usecase"
@@ -62,6 +63,17 @@ func (m *mockEventPublisher) PublishCompleted(_ context.Context, _ shared.ChatCo
 	return nil
 }
 
+func (m *mockEventPublisher) PublishToken(_ context.Context, _ shared.TokenEvent) error {
+	return nil
+}
+
+type mockCallbackStore struct{}
+
+func (m *mockCallbackStore) SetCallback(_ context.Context, _, _ string) error { return nil }
+func (m *mockCallbackStore) GetCallback(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+
 // --- helper ---
 
 func newTestRouter(tokens []usecase.PubSubToken, owned bool) *gin.Engine {
@@ -72,7 +84,7 @@ func newTestRouter(tokens []usecase.PubSubToken, owned bool) *gin.Engine {
 	publisher := &mockEventPublisher{}
 	sendMessage := usecase.NewSendMessage(publisher, "test-api:50051")
 
-	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, zap.NewNop())
+	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, &mockCallbackStore{}, config.Config{}, zap.NewNop())
 
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
@@ -164,7 +176,7 @@ func TestChatStreamHandler_InternalErrorOnPublishFailure(t *testing.T) {
 	publisher := &mockEventPublisher{err: errors.New("kafka unavailable")}
 	sendMessage := usecase.NewSendMessage(publisher, "test-api:50051")
 
-	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, zap.NewNop())
+	h := handler.NewChatStreamHandler(sendMessage, ownerStore, hub, &mockCallbackStore{}, config.Config{}, zap.NewNop())
 
 	r := gin.New()
 	r.Use(func(c *gin.Context) {

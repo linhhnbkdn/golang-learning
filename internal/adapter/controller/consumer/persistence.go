@@ -19,9 +19,21 @@ const (
 	persistFlushInterval  = 30 * time.Second
 )
 
+type kafkaReader interface {
+	FetchMessage(ctx context.Context) (kafka.Message, error)
+	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
+	Close() error
+}
+
+type iPersistUseCase interface {
+	AddToken(token shared.TokenEvent)
+	ShouldFlush(threshold int) bool
+	Flush(ctx context.Context) error
+}
+
 type PersistenceWorker struct {
-	useCase   *usecase.PersistSessionUseCase
-	reader    *kafka.Reader
+	useCase   iPersistUseCase
+	reader    kafkaReader
 	flushing  atomic.Bool // prevent concurrent flushes
 }
 
