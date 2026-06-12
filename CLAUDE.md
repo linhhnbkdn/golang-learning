@@ -4,56 +4,96 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Context
 
-This is a Go learning repository. Code here is exploratory — exercises, experiments, and small programs to learn Go idioms.
+This is an event-driven LLM streaming architecture — not a toy. It exists to explore high-throughput chat streaming patterns in Go: Kafka for async dispatch, gRPC client-streaming for token delivery, Redis for session ownership and history, and PostgreSQL for durable persistence.
 
-## Common Commands
+## Commands
 
 ```bash
-# Run a specific file or package
-go run ./path/to/main.go
-go run ./some/package/
+# Dev: start infrastructure (Kafka, Redis, Postgres)
+make up / make down
 
-# Build
-go build ./...
+# Run individual services locally
+make api                  # HTTP + gRPC server
+make worker               # LLM-request Kafka consumer
+make persistence          # Persistence Kafka consumer
+make streaming-worker     # Token streaming Kafka consumer
+make migrate              # Run DB migrations
 
-# Run all tests
+# Build all binaries
+make build
+
+# Test
 go test ./...
+go test -run TestFunctionName ./internal/usecase/
+go test -v ./internal/adapter/controller/consumer/
 
-# Run tests for a specific package
-go test ./some/package/
+# Load testing (full prod stack + Locust at http://localhost:8089)
+make benchmark
 
-# Run a single test
-go test -run TestFunctionName ./some/package/
+# Production stack only (docker-compose.prod.yml)
+make prod-up / make prod-down / make prod-migrate
 
-# Run tests with verbose output
-go test -v ./...
+# Dev utilities
+make token                 # Generate JWT for user "li"
+make chat MSG="hello"      # POST /chat/:session_id with JWT
+make history               # GET history from Redis
+make history-db            # GET history from PostgreSQL
 
-# Format code
-gofmt -w .
-# or
-go fmt ./...
-
-# Vet (static analysis)
-go vet ./...
-
-# Add a dependency
-go get github.com/some/package
-
-# Tidy dependencies
-go mod tidy
+# Proto regeneration
+protoc --go_out=proto/gen --go-grpc_out=proto/gen proto/token.proto
 ```
 
-## Project Structure
+## Architecture
 
-Go code is typically organized as:
-- Each directory is a package
-- Executable programs have `package main` with a `main()` function
-- Tests live alongside source files as `*_test.go`
-- A `go.mod` file at root defines the module name (create with `go mod init <module-name>`)
+### Request flow (current)
 
-## Go Conventions to Follow
+```
+POST /chat/:session_id
+  → API: JWT auth → ClaimOwner (Redis Lua) → register TokenHub channel → publish chat.requests (Kafka)
+  → API: hold HTTP connection open, stream NDJSON
+
+chat.requests (Kafka)
+  → LLM-Request-Worker: call mock/real LLM → gRPC stream each token back to API's TokenHub
+  → API: TokenHub.Deliver → write delta to HTTP response
+
+LLM-Request-Worker (on done):
+  → publish chat.completed (Kafka)
+
+chat.completed (Kafka)
+  → Persistence: Redis GetHistory → PostgreSQL BulkUpsertMessages
+```
+
+`TokenHub` is an in-process `sync.Map` keyed by `requestID`. The worker dials gRPC directly to the API instance that owns the request (callback address embedded in `ChatRequest`).
+
+### Clean / hexagonal layers
+
+```
+internal/
+  entity/         Domain types: Message, Session
+  usecase/        Business logic + port interfaces (boundary.go)
+  adapter/
+    controller/   Inbound: HTTP handlers (Gin), Kafka consumers, gRPC server
+    gateway/      Outbound: Redis, PostgreSQL, Kafka, in-process hub implementations
+    presenter/    Response formatting
+  framework/      Infrastructure wiring: DB, Redis, LLM connections
+  module/         Logger factory
+config/           Env var loading
+shared/           Kafka message schemas: ChatRequest, ChatCompleted, TokenEvent
+proto/            gRPC protobuf + generated code
+cmd/              Entry points (one per service)
+```
+
+All dependency injection is done via **Uber fx** in each `cmd/*/main.go`. Interfaces are declared in `usecase/boundary.go`; concrete implementations are in `adapter/gateway/`. The `cmd/api/main.go` wires everything with `asXxx()` adapter functions that cast concretes to their interfaces.
+
+### Key design decisions
+
+- **Redis Lua (`ClaimOwner`)** — atomic session ownership: first user to claim a session owns it for its TTL; subsequent users on the same session are rejected.
+- **TokenHub buffer (1000)** — `Register` returns a buffered channel sized well above the max tokens per request; `Deliver` uses a non-blocking send so a slow HTTP writer cannot stall the gRPC stream.
+- **Callback address in ChatRequest** — each `ChatRequest` carries the originating API instance's gRPC address so the worker can route tokens back to exactly the right instance, enabling horizontal scaling.
+- **Bulk upsert idempotency** — `ON CONFLICT (request_id, role) DO UPDATE SET content = EXCLUDED.content` so Kafka replays are safe.
+
+## Go Conventions
 
 - Error handling: always check and handle errors explicitly; do not use `_` for errors unless intentional
-- Use `gofmt` formatting (handled automatically by editors with Go support)
-- Prefer table-driven tests using `t.Run` for subtests
-- Use interfaces to decouple behavior; keep interfaces small (1–3 methods)
+- Prefer table-driven tests using `t.Run`
+- Keep interfaces small (1–3 methods); interfaces live in `usecase/boundary.go`, not in the implementing package
